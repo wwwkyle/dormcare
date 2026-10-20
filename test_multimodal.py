@@ -113,6 +113,33 @@ def main():
         ok("confirmed draft creates ticket with image", s == 200 and
            confirmed.get("ticket", {}).get("id") and
            confirmed["ticket"]["image_ids"] == [agent_image_id])
+
+        before_count = len(stu.call("/api/tickets")[1]["tickets"])
+        s, advice_session = stu.call("/api/agent/session", {"lang": "zh"})
+        advice_id = advice_session["session"]["id"]
+        s, advice = stu.call("/api/agent/message", {
+            "id": advice_id,
+            "text": "宿舍网络突然断线，路由器状态正常，重新插过网线仍无法使用"})
+        ok("safe low-risk issue returns advice branch",
+           s == 200 and advice["stage"] == "advice" and
+           advice["self_help"] and not advice["ready"])
+        s, resolved = stu.call("/api/agent/message", {
+            "id": advice_id, "action": "resolved"})
+        after_count = len(stu.call("/api/tickets")[1]["tickets"])
+        ok("resolved advice closes without ticket",
+           s == 200 and resolved["stage"] == "resolved" and
+           after_count == before_count)
+
+        s, draft_session = stu.call("/api/agent/session", {"lang": "zh"})
+        draft_id = draft_session["session"]["id"]
+        stu.call("/api/agent/message", {
+            "id": draft_id,
+            "text": "宿舍网络突然断线，路由器状态正常，重新插过网线仍无法使用"})
+        s, requested = stu.call("/api/agent/message", {
+            "id": draft_id, "action": "create_draft"})
+        ok("advice can explicitly generate editable draft",
+           s == 200 and requested["stage"] == "draft" and
+           requested["ready"] and requested["draft"]["repair_type"] == "network")
         print("ALL MULTIMODAL TESTS PASSED")
         return 0
     finally:

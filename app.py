@@ -1207,7 +1207,8 @@ class Handler(BaseHTTPRequestHandler):
     def _agent_session_view(session):
         return {k: session.get(k) for k in (
             "id", "created_at", "updated_at", "history", "image_ids",
-            "draft", "ready", "safety_warning", "ticket_id")}
+            "draft", "ready", "stage", "detected", "missing", "self_help",
+            "safety_warning", "resolved", "ticket_id")}
 
     # ---- POST ------------------------------------------------------------- #
 
@@ -1621,7 +1622,8 @@ class Handler(BaseHTTPRequestHandler):
         session = STORE.add_agent_session({
             "user_id": user["id"], "lang": body_lang(body), "history": [],
             "image_ids": [], "draft": None, "ready": False,
-            "safety_warning": "", "ticket_id": "",
+            "stage": "describe", "detected": {}, "missing": [], "self_help": [],
+            "safety_warning": "", "resolved": False, "ticket_id": "",
         })
         self._json(200, {"ok": True, "session": self._agent_session_view(session)})
 
@@ -1636,12 +1638,35 @@ class Handler(BaseHTTPRequestHandler):
         if session.get("user_id") != user["id"]:
             self._err(403, "forbidden", "That agent session is not yours.")
             return
+        if session.get("ticket_id"):
+            self._err(409, "already_confirmed", "This session already created a ticket.")
+            return
+        action = body.get("action") or ""
+        if action == "resolved":
+            session = STORE.update_agent_session(session["id"], {
+                "stage": "resolved", "resolved": True, "ready": False,
+                "draft": None, "missing": [], "self_help": [],
+            })
+            self._json(200, {
+                "ok": True, "stage": "resolved", "ready": False, "draft": None,
+                "reply": ("已结束本次受理，不会创建工单。"
+                          if session.get("lang") == "zh"
+                          else "This intake is closed. No ticket was created."),
+                "detected": session.get("detected") or {}, "missing": [],
+                "self_help": [], "safety_warning": "", "source": "rules",
+            })
+            return
+        if session.get("resolved"):
+            self._err(409, "session_resolved", "This intake session is closed.")
+            return
+        force_draft = action == "create_draft"
         text = (body.get("text") or "").strip()[:2000]
-        image_ids = body.get("image_ids") or []
+        image_ids = (body.get("image_ids") if "image_ids" in body
+                     else session.get("image_ids") or [])
         if not isinstance(image_ids, list) or len(image_ids) > MAX_IMAGES:
             self._err(400, "too_many_images", "At most five images are allowed.")
             return
-        if not text and not image_ids:
+        if not text and not image_ids and not force_draft:
             self._err(400, "empty_text", "Text or images are required.")
             return
         clean_images = []
@@ -1654,12 +1679,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             clean_images.append(uid)
         history = list(session.get("history") or [])
-        history.append({
-            "role": "user",
-            "content": text or ("[图片]" if session.get("lang") == "zh" else "[Image]"),
-            "image_ids": clean_images,
-            "transcript": bool(body.get("transcript")),
-        })
+        if text or not force_draft:
+            history.append({
+                "role": "user",
+                "content": text or ("[图片]" if session.get("lang") == "zh" else "[Image]"),
+                "image_ids": clean_images,
+                "transcript": bool(body.get("transcript")),
+            })
         session = STORE.update_agent_session(session["id"], {
             "history": history[-30:],
             # The request carries the unified composer's current attachments.
@@ -1667,17 +1693,26 @@ class Handler(BaseHTTPRequestHandler):
             "image_ids": list(dict.fromkeys(clean_images)),
         })
         result = intake_agent.respond(self.api_key, self.model, session, user,
-                                      session.get("lang", "zh"), STORE, UPLOAD_DIR)
+                                      session.get("lang", "zh"), STORE, UPLOAD_DIR,
+                                      force_draft=force_draft)
         history = list(session.get("history") or [])
         history.append({"role": "assistant", "content": result.get("reply", "")})
         session = STORE.update_agent_session(session["id"], {
             "history": history[-30:], "draft": result.get("draft"),
             "ready": bool(result.get("complete")),
+            "stage": result.get("stage", "follow_up"),
+            "detected": result.get("detected") or {},
+            "missing": result.get("missing") or [],
+            "self_help": result.get("self_help") or [],
             "safety_warning": result.get("safety_warning", ""),
         })
         self._json(200, {"ok": True, "reply": result.get("reply", ""),
                          "source": result.get("source"), "ready": session.get("ready"),
                          "draft": session.get("draft"),
+                         "stage": session.get("stage"),
+                         "detected": session.get("detected") or {},
+                         "missing": session.get("missing") or [],
+                         "self_help": session.get("self_help") or [],
                          "safety_warning": session.get("safety_warning", "")})
 
     def _api_agent_confirm(self, body, ip):
@@ -1710,7 +1745,7 @@ class Handler(BaseHTTPRequestHandler):
             # supplied during confirmation.
             "image_ids": session.get("image_ids") or [],
             "student_name": user.get("name", ""), "contact": body.get("contact", ""),
-            "title": draft.get("title", ""),
+            "title": body.get("title") or draft.get("title", ""),
             "public_area": bool(body.get("public_area")),
             "college": body.get("college"), "block": body.get("block"),
             "dorm": body.get("dorm"),

@@ -729,8 +729,19 @@ dormcare/
 
 学生报修页只有一个 **AI 智能受理**入口：文字、Web Speech API 语音转写和相机/相册图片
 都进入同一个多轮 Agent 消息流。语音结果先进入同一输入框，学生可编辑后发送；图片可在
-统一输入区预览/删除，并作为该条消息的 `image_ids` 发送。Agent 会追问并生成结构化草稿，
-页面把草稿同步到下方可编辑字段；只有学生点击「确认草稿并创建」才会创建工单，因此不会再
+统一输入区预览/删除，并作为该条消息的 `image_ids` 发送。页面用四个阶段明确展示
+“描述问题 → AI 追问/建议 → 工单草稿 → 确认提交”，而不是同时铺开两套大表单。
+
+Agent 识别类别、紧急度和信息缺口后有两条分支：
+
+1. 信息不足或需要师傅处理：继续追问，随后生成结构化草稿。标题、类型、描述、位置、
+   紧急度、图片、日期和上门时段都可核对编辑。
+2. 低风险且有保守自处置方法：显示安全步骤，并让学生选择“已解决，无需报修”或
+   “仍需师傅，生成工单”。前者只关闭 Agent 会话，不创建工单；后者进入同一草稿流程。
+
+漏电、燃气、烟火和大面积漏水不会进入自处置分支，而是醒目提示远离危险、断开安全范围内
+可断开的总电源/阀门并联系校园应急人员，禁止给出拆修步骤。只有学生点击“确认提交工单”
+才会创建工单，因此不会再
 出现旧分类接口和对话 Agent 各自填表、各自创建造成的状态漂移。
 
 图片最多 5 张、每张解码后不超过 5MB、仅 JPEG/PNG。服务端校验上传归属，并在支持视觉的
@@ -753,8 +764,11 @@ OpenAI-compatible 模型路径中以私有 data URL 构造多模态消息；图�
 - `GET /api/uploads/<id>`（登录）：返回图片字节。仅图片所有者、工单学生、被派师傅或管理员可读；
   上传目录没有公开静态映射。
 - `POST /api/agent/session`（学生）：`{"lang":"zh|en"}`，返回服务端会话。
-- `POST /api/agent/message`（学生）：`{"id","text","image_ids":[],"transcript":false}`，
-  返回 `reply/source/ready/draft/safety_warning`。会话保留最多 30 条历史。
+- `POST /api/agent/message`（学生）：普通消息为
+  `{"id","text","image_ids":[],"transcript":false}`；建议分支操作为
+  `{"id","action":"resolved|create_draft","image_ids":[]}`。返回
+  `stage/detected/missing/self_help/reply/source/ready/draft/safety_warning`。
+  `resolved` 只结束会话且不创建工单；会话保留最多 30 条历史。
 - `GET /api/agent/session?id=<id>`（学生）：返回自己的会话、历史、草稿和创建结果；跨账号 `403`。
 - `POST /api/agent/confirm`（学生）：`{"id","date":"YYYY-MM-DD","slots":[[start,end]],"contact":""}`。
   只有 `ready=true` 的未确认草稿可创建一次工单。

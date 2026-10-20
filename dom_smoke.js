@@ -479,6 +479,15 @@ async function runRole(page, module, cookie, opts) {
   /* ====================================================================== */
 
   if (module === "student-report.js") {
+    check("report page has one unified AI composer",
+      id("agentSend") && id("intakeText") && id("photoInput") &&
+      document.getElementById("agentText") === null &&
+      document.getElementById("intakeBtn") === null);
+    check("intake exposes four clear stages",
+      id("intakeSteps").querySelectorAll("li").length === 4);
+    check("draft form starts collapsed but manual fallback remains available",
+      id("draftSection").hidden === true && !!id("manualOpen"));
+
     const collegeOpts = id("fCollege") ? id("fCollege").innerHTML.match(/<option/g) : null;
     check("college picker has 8 colleges", collegeOpts && collegeOpts.length === 8,
       "options=" + (collegeOpts ? collegeOpts.length : 0));

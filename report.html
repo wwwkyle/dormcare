@@ -44,32 +44,58 @@
         <span class="tag ai" data-i18n="tagRag">RAG</span>
       </div>
       <p class="hint" data-i18n="intakeHint">输入文字、语音或图片，多轮补充信息；确认草稿后才会创建工单。</p>
+      <ol class="intake-steps" id="intakeSteps" aria-label="Intake progress">
+        <li data-step="describe" class="active" data-i18n="stepDescribe">描述问题</li>
+        <li data-step="assist" data-i18n="stepAssist">AI 追问 / 建议</li>
+        <li data-step="draft" data-i18n="stepDraft">工单草稿</li>
+        <li data-step="confirm" data-i18n="stepConfirm">确认提交</li>
+      </ol>
       <div class="agent-log" id="agentLog" hidden></div>
+      <div class="agent-result" id="agentResult" hidden>
+        <div class="safety-alert" id="safetyAlert" hidden></div>
+        <div class="agent-meta" id="agentMeta"></div>
+        <p id="agentReply"></p>
+        <div id="agentMissing" hidden></div>
+      </div>
+      <div class="agent-advice" id="agentAdvice" hidden>
+        <h3 data-i18n="selfHelpTitle">可安全尝试的处理方法</h3>
+        <ol id="selfHelpList"></ol>
+        <div class="row">
+          <button type="button" class="btn success" id="agentResolved" data-i18n="agentResolved">已解决，无需报修</button>
+          <button type="button" class="btn primary" id="agentNeedRepair" data-i18n="agentNeedRepair">仍需师傅，生成工单</button>
+        </div>
+      </div>
       <textarea id="intakeText" rows="3" maxlength="2000"
                 data-i18n-ph="agentPlaceholder" data-i18n-aria="intakeTitle"></textarea>
-      <div class="row">
+      <div class="row composer-tools">
         <button type="button" class="btn ghost" id="speechBtn" data-i18n="speechStart">语音转文字</button>
+        <label class="btn ghost upload-btn" for="photoInput">
+          <span data-i18n="photoChoose">拍照 / 相册</span>
+          <input id="photoInput" type="file" accept="image/jpeg,image/png" capture="environment" multiple>
+        </label>
         <span class="hint" id="speechHint" data-i18n="speechHint">语音结果进入同一输入框，可编辑后发送。</span>
       </div>
-      <label class="lbl" for="photoInput" data-i18n="reportPhotos">故障照片（最多5张）</label>
-      <input id="photoInput" type="file" accept="image/jpeg,image/png" capture="environment" multiple>
       <p class="hint" data-i18n="photoRules">仅 JPG/PNG，每张不超过 5MB。</p>
       <div class="image-grid" id="photoPreview"></div>
       <div class="row">
         <button type="button" class="btn primary" id="agentSend" data-i18n="agentSend">发送给 AI</button>
         <button type="button" class="btn ghost" id="intakeClearBtn" data-i18n="intakeClearBtn">清空</button>
-        <button type="button" class="btn primary" id="agentConfirm" data-i18n="agentConfirm" hidden>确认草稿并创建</button>
+        <button type="button" class="btn linkish" id="manualOpen" data-i18n="manualOpen">改为手动填写</button>
       </div>
-      <pre class="agent-draft" id="agentDraft" hidden></pre>
+      <p class="form-msg" id="agentMsg"></p>
     </section>
 
     <!-- ② AI 草稿编辑 / 手工降级 -->
-    <section class="card">
+    <section class="card draft-card" id="draftSection" hidden>
       <div class="card-head">
         <h2><span aria-hidden="true">📝</span> <span data-i18n="formTitle">草稿编辑与手工报修</span></h2>
         <span class="tag" id="formAiTag" hidden data-i18n="tagAiFilled">AI 已填充</span>
       </div>
       <p class="hint" data-i18n="manualFallbackHint">AI 不可用时，可在这里直接填写并提交。</p>
+      <div class="agent-draft" id="agentDraft" hidden></div>
+
+      <label class="lbl" for="fTitle" data-i18n="lblTitle">工单标题</label>
+      <input type="text" id="fTitle" maxlength="80" data-i18n-ph="phTitle">
 
       <label class="lbl" data-i18n="lblType">损坏类型</label>
       <div class="chips types" id="typeChips"></div>
@@ -141,7 +167,8 @@
       <textarea id="fDesc" rows="2" maxlength="1000" data-i18n-ph="phDesc"></textarea>
 
       <div class="row">
-        <button type="button" class="btn primary big" id="submitBtn" data-i18n="submitBtn">提交报修申请</button>
+        <button type="button" class="btn primary big" id="agentConfirm" data-i18n="agentConfirm" hidden>确认提交工单</button>
+        <button type="button" class="btn primary big" id="submitBtn" data-i18n="submitBtn">手动提交报修</button>
       </div>
       <p class="form-msg" id="formMsg"></p>
     </section>

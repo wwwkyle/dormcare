@@ -198,36 +198,95 @@
   /* ====================================================================== */
 
   var conversation = [];
+  var lastAgentResult = null;
+  var lastAgentDraft = null;
+
+  function setStage(stage) {
+    var order = ["describe", "assist", "draft", "confirm"];
+    var index = Math.max(0, order.indexOf(stage));
+    Array.prototype.forEach.call($("intakeSteps").querySelectorAll("li"), function (node, i) {
+      node.className = i < index ? "done" : (i === index ? "active" : "");
+    });
+  }
+
+  function repairName(id) {
+    var item = types.filter(function (x) { return x.id === id; })[0];
+    return item ? (DC.lang === "zh" ? item.zh : item.en) : id;
+  }
 
   function renderConversation() {
     var log = $("agentLog");
-    log.hidden = !conversation.length;
-    log.textContent = conversation.map(function (x) {
+    // The latest assistant turn is rendered as the structured result card
+    // below; keep earlier turns here so the current reply is not duplicated.
+    var turns = conversation.slice();
+    if (turns.length && turns[turns.length - 1].role === "assistant") turns.pop();
+    log.hidden = !turns.length;
+    log.textContent = turns.map(function (x) {
       return (x.role === "user" ? t("agentYou") : t("agentAssistant")) + "： " + x.text;
     }).join("\n\n");
   }
 
-  function applyAgentDraft(draft) {
+  function applyAgentDraft(draft, noScroll) {
     if (!draft) return;
+    lastAgentDraft = draft;
     if (draft.repair_type) selType = draft.repair_type;
     if (draft.priority) selPriority = draft.priority;
+    if (draft.title) $("fTitle").value = draft.title;
     if (draft.description) $("fDesc").value = draft.description;
     $("formAiTag").hidden = false;
     renderTypeChips();
     renderPriorityChips();
+    $("draftSection").hidden = false;
     $("agentDraft").hidden = false;
-    $("agentDraft").textContent =
-      t("agentDraftSummary") + "\n" +
-      t("aiClass") + "：" + (draft.repair_type || "") + "\n" +
-      t("aiPriority") + "：" + priLabel(draft.priority) + "\n" +
-      t("lblDesc") + "：" + (draft.description || "") + "\n" +
-      t("reportPhotos") + "：" + (draft.image_ids || []).length;
+    $("agentDraft").innerHTML =
+      "<strong>" + esc(t("agentDraftSummary")) + "</strong><div class=\"kv\">" +
+      "<b>" + esc(t("aiClass")) + "：" + esc(repairName(draft.repair_type)) + "</b>" +
+      "<b>" + esc(t("aiPriority")) + "：" + esc(priLabel(draft.priority)) + "</b>" +
+      "<b>" + esc(t("reportPhotos")) + "：" + (draft.image_ids || []).length + "</b></div>";
+    $("agentConfirm").hidden = false;
+    $("submitBtn").hidden = true;
+    setStage("draft");
+    if (!noScroll) $("draftSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderAgentResult(data) {
+    lastAgentResult = data;
+    var detected = data.detected || {};
+    $("agentResult").hidden = false;
+    $("agentResult").className = "agent-result" +
+      (data.safety_warning ? " high-risk" : "");
+    $("agentReply").textContent = data.reply || "";
+    $("safetyAlert").hidden = !data.safety_warning;
+    $("safetyAlert").textContent = data.safety_warning || "";
+    $("agentMeta").innerHTML =
+      "<span>" + esc(t("aiClass")) + "：" +
+      esc(repairName(detected.repair_type || "")) + "</span>" +
+      "<span>" + esc(t("aiPriority")) + "：" +
+      esc(priLabel(detected.priority || "normal")) + "</span>";
+    var missing = data.missing || [];
+    $("agentMissing").hidden = !missing.length;
+    $("agentMissing").innerHTML = missing.length
+      ? "<strong>" + esc(t("missingTitle")) + "</strong><ul>" +
+        missing.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") +
+        "</ul>" : "";
+    var tips = data.self_help || [];
+    $("agentAdvice").hidden = data.stage !== "advice";
+    $("selfHelpList").innerHTML = tips.map(function (x) {
+      return "<li>" + esc(x) + "</li>";
+    }).join("");
+    if (data.stage === "follow_up" || data.stage === "advice") setStage("assist");
+    if (data.stage === "resolved") {
+      setStage("confirm");
+      $("agentAdvice").hidden = true;
+      $("intakeText").disabled = true;
+      $("agentSend").disabled = true;
+    }
   }
 
   function sendAgentMessage() {
     var text = $("intakeText").value.trim();
     if (!text && !reportUploads.length) {
-      DC.setMsg($("formMsg"), "err_empty_text", "err");
+      DC.setMsg($("agentMsg"), "err_empty_text", "err");
       return;
     }
     DC.busy($("agentSend"), true);
@@ -254,15 +313,52 @@
           res.data.reply
       });
       renderConversation();
+      renderAgentResult(res.data);
       applyAgentDraft(res.data.draft);
-      $("agentConfirm").hidden = !res.data.ready;
       $("intakeText").value = "";
-      DC.setMsg($("formMsg"), "", "");
+      DC.setMsg($("agentMsg"), "", "");
     }).catch(function (e) {
       conversation.push({ role: "assistant", text: e.message || t("err_network") });
       renderConversation();
+      DC.setMsg($("agentMsg"), "", "err");
+      $("agentMsg").textContent = t("agentFallback");
     }).then(function () {
       DC.busy($("agentSend"), false);
+    });
+  }
+
+  function agentAction(action) {
+    if (!agentSessionId) return;
+    var button = action === "resolved" ? $("agentResolved") : $("agentNeedRepair");
+    DC.busy(button, true);
+    DC.post("/api/agent/message", {
+      id: agentSessionId, action: action,
+      image_ids: reportUploads.map(function (x) { return x.id; })
+    }).then(function (res) {
+      if (!res.ok) throw new Error(DC.errorText(res.data));
+      conversation.push({ role: "assistant", text: res.data.reply || "" });
+      renderConversation();
+      renderAgentResult(res.data);
+      applyAgentDraft(res.data.draft);
+    }).catch(function (e) {
+      DC.setMsg($("agentMsg"), "", "err");
+      $("agentMsg").textContent = e.message;
+    }).then(function () { DC.busy(button, false); });
+  }
+
+  function refreshDraftImages() {
+    if (!agentSessionId || !lastAgentDraft) return;
+    $("agentConfirm").hidden = true;
+    DC.post("/api/agent/message", {
+      id: agentSessionId, action: "create_draft",
+      image_ids: reportUploads.map(function (x) { return x.id; })
+    }).then(function (res) {
+      if (!res.ok) throw new Error(DC.errorText(res.data));
+      renderAgentResult(res.data);
+      applyAgentDraft(res.data.draft, true);
+    }).catch(function (e) {
+      DC.setMsg($("agentMsg"), "", "err");
+      $("agentMsg").textContent = e.message;
     });
   }
 
@@ -295,6 +391,7 @@
       date: $("fDate").value,
       slots: pairs,
       description: $("fDesc").value.trim(),
+      title: $("fTitle").value.trim(),
       student_name: $("fName").value.trim(),
       contact: $("fContact").value.trim(),
       ai_reason: "",
@@ -403,17 +500,39 @@
     $("slotAll").addEventListener("click", function () { setAll(true); });
 
     $("agentSend").addEventListener("click", sendAgentMessage);
-    $("intakeClearBtn").addEventListener("click", function () {
-      $("intakeText").value = "";
-      $("fDesc").value = "";
-      $("agentLog").hidden = true;
+    $("agentResolved").addEventListener("click", function () { agentAction("resolved"); });
+    $("agentNeedRepair").addEventListener("click", function () { agentAction("create_draft"); });
+    $("manualOpen").addEventListener("click", function () {
+      $("draftSection").hidden = false;
+      $("formAiTag").hidden = true;
       $("agentDraft").hidden = true;
       $("agentConfirm").hidden = true;
+      $("submitBtn").hidden = false;
+      setStage("draft");
+      $("draftSection").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    $("intakeClearBtn").addEventListener("click", function () {
+      $("intakeText").value = "";
+      $("intakeText").disabled = false;
+      $("agentSend").disabled = false;
+      $("fTitle").value = "";
+      $("fDesc").value = "";
+      $("agentLog").hidden = true;
+      $("agentResult").hidden = true;
+      $("agentAdvice").hidden = true;
+      $("agentDraft").hidden = true;
+      $("agentConfirm").hidden = true;
+      $("submitBtn").hidden = false;
+      $("draftSection").hidden = true;
       $("formAiTag").hidden = true;
       conversation = [];
+      lastAgentResult = null;
+      lastAgentDraft = null;
       reportUploads = [];
       agentSessionId = "";
+      setStage("describe");
       renderPhotos();
+      DC.setMsg($("agentMsg"), "", "");
       DC.setMsg($("formMsg"), "", "");
     });
 
@@ -422,9 +541,12 @@
     $("photoInput").addEventListener("change", function () {
       uploadFiles(this.files, "agent").then(function (items) {
         reportUploads = reportUploads.concat(items);
-        $("agentConfirm").hidden = true;
         renderPhotos();
-      }).catch(function (e) { $("formMsg").textContent = e.message; });
+        refreshDraftImages();
+      }).catch(function (e) {
+        DC.setMsg($("agentMsg"), "", "err");
+        $("agentMsg").textContent = e.message + " " + t("photoFallback");
+      });
       this.value = "";
     });
     $("photoPreview").addEventListener("click", function (e) {
@@ -433,8 +555,8 @@
       reportUploads = reportUploads.filter(function (x) {
         return x.id !== b.getAttribute("data-remove-photo");
       });
-      $("agentConfirm").hidden = true;
       renderPhotos();
+      refreshDraftImages();
     });
 
     var Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -445,10 +567,12 @@
       $("speechBtn").addEventListener("click", function () {
         var rec = new Speech();
         rec.lang = DC.lang === "zh" ? "zh-CN" : "en-US";
+        $("speechHint").textContent = t("speechListening");
         rec.onresult = function (event) {
           var text = event.results[0][0].transcript || "";
           $("intakeText").value = ($("intakeText").value.trim() + " " + text).trim();
           $("intakeText").focus();
+          $("speechHint").textContent = t("speechHint");
         };
         rec.onerror = function () { $("speechHint").textContent = t("speechFailed"); };
         try { rec.start(); } catch (e) { $("speechHint").textContent = t("speechFailed"); }
@@ -459,9 +583,11 @@
       var pairs = selectedPairs();
       if (!pairs.length) { DC.setMsg($("formMsg"), "needSlots", "err"); return; }
       DC.busy($("agentConfirm"), true);
+      setStage("confirm");
       DC.post("/api/agent/confirm", {
         id: agentSessionId, date: $("fDate").value, slots: pairs,
         contact: $("fContact").value.trim(),
+        title: $("fTitle").value.trim(),
         repair_type: selType, priority: selPriority,
         description: $("fDesc").value.trim(),
         public_area: publicArea,
@@ -486,6 +612,9 @@
     renderDateOptions();
     renderSlots();
     renderAddress();
+    renderConversation();
+    if (lastAgentResult) renderAgentResult(lastAgentResult);
+    if (lastAgentDraft) applyAgentDraft(lastAgentDraft, true);
   });
 
   wire();

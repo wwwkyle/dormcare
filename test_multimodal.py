@@ -79,20 +79,40 @@ def main():
         ok("student sees completion fields", visible.get("completed_at") and
            visible.get("completed_by") and done_id in visible.get("completion_image_ids", []))
 
+        s, agent_up = stu.call("/api/uploads", {
+            "purpose": "agent", "images": [{"mime": "image/png", "data": encoded}]})
+        agent_image_id = agent_up["uploads"][0]["id"]
+        ok("agent image upload succeeds", s == 200 and agent_image_id)
+
         s, agent = stu.call("/api/agent/session", {"lang": "zh"})
         aid = agent["session"]["id"]
         s, first = stu.call("/api/agent/message", {"id": aid, "text": "插座坏了"})
         ok("agent asks follow-up", s == 200 and not first["ready"])
+        s, other_agent = other.call("/api/agent/session", {"lang": "zh"})
+        other_aid = other_agent["session"]["id"]
+        s, forbidden_image = other.call("/api/agent/message", {
+            "id": other_aid, "text": "请看图片里的故障",
+            "image_ids": [agent_image_id]})
+        ok("cross-account agent image rejected",
+           s == 403 and forbidden_image.get("code") == "forbidden")
         s, second = stu.call("/api/agent/message", {
             "id": aid, "text": "A-301书桌旁插座冒火花，从今天上午开始，已停止使用",
-            "image_ids": []})
+            "image_ids": [agent_image_id]})
         ok("agent produces urgent draft", s == 200 and second["ready"] and
            second["draft"]["priority"] == "urgent" and second["safety_warning"])
+        ok("agent image retained in draft",
+           second["draft"]["image_ids"] == [agent_image_id])
+        session_view = stu.call("/api/agent/session?id=" + aid)[1]["session"]
+        ok("agent message retains image ids",
+           session_view["image_ids"] == [agent_image_id] and
+           session_view["history"][-2]["image_ids"] == [agent_image_id])
         s, forbidden = other.call("/api/agent/session?id=" + aid)
         ok("cross-account agent session denied", s == 403)
         s, confirmed = stu.call("/api/agent/confirm", {
             "id": aid, "date": day, "slots": [[2, 8]]})
-        ok("confirmed draft creates ticket", s == 200 and confirmed.get("ticket", {}).get("id"))
+        ok("confirmed draft creates ticket with image", s == 200 and
+           confirmed.get("ticket", {}).get("id") and
+           confirmed["ticket"]["image_ids"] == [agent_image_id])
         print("ALL MULTIMODAL TESTS PASSED")
         return 0
     finally:

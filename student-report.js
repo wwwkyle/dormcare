@@ -194,129 +194,75 @@
   }
 
   /* ====================================================================== */
-  /*  AI intake                                                             */
+  /*  Unified conversational intake                                         */
   /* ====================================================================== */
 
-  /**
-   * The AI's answer, in the order a student actually needs it:
-   *
-   *   1. what it thinks is wrong,
-   *   2. what it still does not know — as questions the student can answer
-   *      right here, one click from being pasted into the description box,
-   *   3. what is worth trying before anybody turns up.
-   *
-   * The fixed labour time is deliberately absent. It is an internal scheduling
-   * constant — telling a resident "this takes 60 minutes" only invites an
-   * argument about a number that was never negotiable.
-   */
-  function renderIntake(res, extraHtml) {
-    var d = res.data || {};
-    var out = $("intakeOut");
-    var html = "";
-    var questions = [];
-    if (d.out_of_scope) {
-      html = "<strong>" + esc(t("outOfScope")) + "</strong><br>" + esc(d.message || "");
-    } else {
-      html = "<strong>" + esc(t("aiDetected")) + "</strong>" + '<div class="kv">' +
-        "<b>" + esc(t("aiClass")) + "：" + esc(d.repair_label || "") + "</b>" +
-        "<b>" + esc(t("aiPriority")) + "：" + esc(priLabel(d.priority)) + "</b>" +
-        "<b>" + esc(t("aiConfidence")) + "：" + esc(t("conf" + DC.cap(d.confidence))) + "</b>" +
-        "<b>" + esc(t("aiSource")) + "：" +
-        esc(d.source === "model" ? t("sourceModel") : t("sourceRules")) + "</b>" +
-        (d.needs_certified ? "<b>⚠ " + esc(t("certNeeded")) + "</b>" : "") +
-        (d.parts ? "<b>" + esc(t("partsNeeded")) + "：" + esc(d.parts) + "</b>" : "") +
-        "</div>";
-      if (d.reason) {
-        html += '<div class="ai-note">' + esc(t("aiReason")) + "：" + esc(d.reason) + "</div>";
-      }
+  var conversation = [];
 
-      // 追问 — the description was thin, so ask instead of guessing.
-      questions = d.follow_up || [];
-      if (d.need_more_info && questions.length) {
-        html += '<div class="ai-ask"><h4>❓ ' + esc(t("aiAskTitle")) + "</h4><ul>" +
-          questions.map(function (q) { return "<li>" + esc(q) + "</li>"; }).join("") +
-          "</ul><button type=\"button\" class=\"btn tiny\" id=\"aiAskFill\">" +
-          esc(t("aiAskFill")) + "</button></div>";
-      }
+  function renderConversation() {
+    var log = $("agentLog");
+    log.hidden = !conversation.length;
+    log.textContent = conversation.map(function (x) {
+      return (x.role === "user" ? t("agentYou") : t("agentAssistant")) + "： " + x.text;
+    }).join("\n\n");
+  }
 
-      // 自检建议 — things worth trying before anybody turns up with a toolbox.
-      var tips = d.self_help || [];
-      if (tips.length) {
-        html += '<div class="ai-tips"><h4>🛠 ' + esc(t("aiTipsTitle")) + "</h4><ol>" +
-          tips.map(function (s) { return "<li>" + md(s) + "</li>"; }).join("") +
-          "</ol></div>";
-      }
+  function applyAgentDraft(draft) {
+    if (!draft) return;
+    if (draft.repair_type) selType = draft.repair_type;
+    if (draft.priority) selPriority = draft.priority;
+    if (draft.description) $("fDesc").value = draft.description;
+    $("formAiTag").hidden = false;
+    renderTypeChips();
+    renderPriorityChips();
+    $("agentDraft").hidden = false;
+    $("agentDraft").textContent =
+      t("agentDraftSummary") + "\n" +
+      t("aiClass") + "：" + (draft.repair_type || "") + "\n" +
+      t("aiPriority") + "：" + priLabel(draft.priority) + "\n" +
+      t("lblDesc") + "：" + (draft.description || "") + "\n" +
+      t("reportPhotos") + "：" + (draft.image_ids || []).length;
+  }
+
+  function sendAgentMessage() {
+    var text = $("intakeText").value.trim();
+    if (!text && !reportUploads.length) {
+      DC.setMsg($("formMsg"), "err_empty_text", "err");
+      return;
     }
-    if (extraHtml) html += extraHtml;
-    out.innerHTML = html;
-    out.hidden = false;
-
-    var fillBtn = $("aiAskFill");
-    if (fillBtn) {
-      fillBtn.addEventListener("click", function () {
-        var desc = $("fDesc");
-        var block = questions.map(function (q) { return "• " + q + " → "; }).join("\n");
-        desc.value = (desc.value.trim() ? desc.value.trim() + "\n" : "") + block;
-        desc.focus();
-        desc.scrollIntoView({ behavior: "smooth", block: "center" });
+    DC.busy($("agentSend"), true);
+    var start = agentSessionId ? Promise.resolve() :
+      DC.post("/api/agent/session", { lang: DC.lang }).then(function (res) {
+        if (!res.ok) throw new Error(DC.errorText(res.data));
+        agentSessionId = res.data.session.id;
       });
-    }
-  }
-
-  function doIntake() {
-    var out = $("intakeOut"), msg = $("formMsg");
-    var text = $("intakeText").value.trim();
-    if (!text) { DC.setMsg(msg, "err_empty_text", "err"); return; }
-    DC.busy($("intakeBtn"), true);
-    out.hidden = true;
-    DC.post("/api/intake/parse", { text: text, lang: DC.lang }).then(function (res) {
-      DC.busy($("intakeBtn"), false);
-      if (!res.ok) {
-        out.hidden = false;
-        out.textContent = DC.errorText(res.data);
-        return;
-      }
-      renderIntake(res, null);
-      var d = res.data;
-      if (!d.out_of_scope) {
-        selType = d.repair_type;
-        selPriority = d.priority || "normal";
-        $("formAiTag").hidden = false;
-        renderTypeChips();
-        renderPriorityChips();
-        var desc = $("fDesc");
-        if (!desc.value.trim()) desc.value = text;
-        $("typeChips").scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }).catch(function () {
-      DC.busy($("intakeBtn"), false);
-      out.hidden = false;
-      out.textContent = t("err_network");
-    });
-  }
-
-  function doAdvice() {
-    var out = $("intakeOut"), msg = $("formMsg");
-    var text = $("intakeText").value.trim();
-    if (!text) { DC.setMsg(msg, "err_empty_text", "err"); return; }
-    DC.busy($("intakeAdviceBtn"), true);
-    out.hidden = true;
-    var ctx = {
-      repair_type: selType,
-      priority: selPriority,
-      college: publicArea ? $("fCollege").value : ((DC.me && DC.me.college) || ""),
-      dorm: publicArea ? $("fDorm").value.trim() : ((DC.me && DC.me.dorm) || ""),
-      window_text: pairsText(selectedPairs())
-    };
-    DC.post("/api/intake/advice", { text: text, lang: DC.lang, context: ctx }).then(function (res) {
-      DC.busy($("intakeAdviceBtn"), false);
-      out.hidden = false;
-      if (!res.ok) { out.textContent = DC.errorText(res.data); return; }
-      out.innerHTML = md(res.data.reply || "");
-    }).catch(function () {
-      DC.busy($("intakeAdviceBtn"), false);
-      out.hidden = false;
-      out.textContent = t("err_network");
+    start.then(function () {
+      return DC.post("/api/agent/message", {
+        id: agentSessionId,
+        text: text,
+        image_ids: reportUploads.map(function (x) { return x.id; })
+      });
+    }).then(function (res) {
+      if (!res.ok) throw new Error(DC.errorText(res.data));
+      conversation.push({
+        role: "user",
+        text: text || fill(t("agentImagesOnly"), { n: reportUploads.length })
+      });
+      conversation.push({
+        role: "assistant",
+        text: (res.data.safety_warning ? "⚠ " + res.data.safety_warning + "\n" : "") +
+          res.data.reply
+      });
+      renderConversation();
+      applyAgentDraft(res.data.draft);
+      $("agentConfirm").hidden = !res.data.ready;
+      $("intakeText").value = "";
+      DC.setMsg($("formMsg"), "", "");
+    }).catch(function (e) {
+      conversation.push({ role: "assistant", text: e.message || t("err_network") });
+      renderConversation();
+    }).then(function () {
+      DC.busy($("agentSend"), false);
     });
   }
 
@@ -339,13 +285,6 @@
     DC.busy($("submitBtn"), true);
     DC.setMsg(msg, "", "");
 
-    var out = $("intakeOut");
-    var aiReason = "";
-    if (!out.hidden) {
-      var note = out.querySelector(".ai-note");
-      if (note) aiReason = note.textContent.slice(0, 300);
-    }
-
     var payload = {
       lang: DC.lang,
       // The one flag that lets a ticket carry an address other than the
@@ -358,9 +297,9 @@
       description: $("fDesc").value.trim(),
       student_name: $("fName").value.trim(),
       contact: $("fContact").value.trim(),
-      ai_reason: aiReason,
-      ai_source: ""
-      ,image_ids: reportUploads.map(function (x) { return x.id; })
+      ai_reason: "",
+      ai_source: "",
+      image_ids: reportUploads.map(function (x) { return x.id; })
     };
     if (publicArea) {
       payload.college = $("fCollege").value;
@@ -463,20 +402,28 @@
     });
     $("slotAll").addEventListener("click", function () { setAll(true); });
 
-    $("intakeBtn").addEventListener("click", doIntake);
-    $("intakeAdviceBtn").addEventListener("click", doAdvice);
+    $("agentSend").addEventListener("click", sendAgentMessage);
     $("intakeClearBtn").addEventListener("click", function () {
       $("intakeText").value = "";
-      $("intakeOut").hidden = true;
+      $("fDesc").value = "";
+      $("agentLog").hidden = true;
+      $("agentDraft").hidden = true;
+      $("agentConfirm").hidden = true;
       $("formAiTag").hidden = true;
+      conversation = [];
+      reportUploads = [];
+      agentSessionId = "";
+      renderPhotos();
       DC.setMsg($("formMsg"), "", "");
     });
 
     $("submitBtn").addEventListener("click", submitTicket);
 
     $("photoInput").addEventListener("change", function () {
-      uploadFiles(this.files, "ticket").then(function (items) {
-        reportUploads = reportUploads.concat(items); renderPhotos();
+      uploadFiles(this.files, "agent").then(function (items) {
+        reportUploads = reportUploads.concat(items);
+        $("agentConfirm").hidden = true;
+        renderPhotos();
       }).catch(function (e) { $("formMsg").textContent = e.message; });
       this.value = "";
     });
@@ -486,6 +433,7 @@
       reportUploads = reportUploads.filter(function (x) {
         return x.id !== b.getAttribute("data-remove-photo");
       });
+      $("agentConfirm").hidden = true;
       renderPhotos();
     });
 
@@ -499,43 +447,35 @@
         rec.lang = DC.lang === "zh" ? "zh-CN" : "en-US";
         rec.onresult = function (event) {
           var text = event.results[0][0].transcript || "";
-          $("fDesc").value = ($("fDesc").value.trim() + " " + text).trim();
+          $("intakeText").value = ($("intakeText").value.trim() + " " + text).trim();
+          $("intakeText").focus();
         };
         rec.onerror = function () { $("speechHint").textContent = t("speechFailed"); };
         try { rec.start(); } catch (e) { $("speechHint").textContent = t("speechFailed"); }
       });
     }
 
-    $("agentSend").addEventListener("click", function () {
-      var text = $("agentText").value.trim();
-      var start = agentSessionId ? Promise.resolve() :
-        DC.post("/api/agent/session", { lang: DC.lang }).then(function (res) {
-          if (!res.ok) throw new Error(DC.errorText(res.data));
-          agentSessionId = res.data.session.id;
-        });
-      start.then(function () {
-        return DC.post("/api/agent/message", {
-          id: agentSessionId, text: text,
-          image_ids: reportUploads.map(function (x) { return x.id; })
-        });
-      }).then(function (res) {
-        if (!res.ok) throw new Error(DC.errorText(res.data));
-        $("agentLog").textContent = (res.data.safety_warning
-          ? "⚠ " + res.data.safety_warning + "\n" : "") + res.data.reply;
-        $("agentDraft").hidden = !res.data.draft;
-        $("agentDraft").textContent = res.data.draft
-          ? JSON.stringify(res.data.draft, null, 2) : "";
-        $("agentConfirm").hidden = !res.data.ready;
-      }).catch(function (e) { $("agentLog").textContent = e.message; });
-    });
     $("agentConfirm").addEventListener("click", function () {
+      var pairs = selectedPairs();
+      if (!pairs.length) { DC.setMsg($("formMsg"), "needSlots", "err"); return; }
+      DC.busy($("agentConfirm"), true);
       DC.post("/api/agent/confirm", {
-        id: agentSessionId, date: $("fDate").value, slots: selectedPairs(),
-        contact: $("fContact").value.trim()
+        id: agentSessionId, date: $("fDate").value, slots: pairs,
+        contact: $("fContact").value.trim(),
+        repair_type: selType, priority: selPriority,
+        description: $("fDesc").value.trim(),
+        public_area: publicArea,
+        college: publicArea ? $("fCollege").value : "",
+        block: publicArea ? $("fBlock").value : "",
+        dorm: publicArea ? $("fDorm").value.trim() : ""
       }).then(function (res) {
         if (!res.ok) throw new Error(DC.errorText(res.data));
         window.location.replace("/records.html");
-      }).catch(function (e) { $("agentLog").textContent = e.message; });
+      }).catch(function (e) {
+        DC.busy($("agentConfirm"), false);
+        DC.setMsg($("formMsg"), "", "err");
+        $("formMsg").textContent = e.message;
+      });
     });
   }
 

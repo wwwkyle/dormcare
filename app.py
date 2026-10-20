@@ -1638,26 +1638,36 @@ class Handler(BaseHTTPRequestHandler):
             return
         text = (body.get("text") or "").strip()[:2000]
         image_ids = body.get("image_ids") or []
+        if not isinstance(image_ids, list) or len(image_ids) > MAX_IMAGES:
+            self._err(400, "too_many_images", "At most five images are allowed.")
+            return
         if not text and not image_ids:
             self._err(400, "empty_text", "Text or images are required.")
             return
         clean_images = []
-        for uid in image_ids[:MAX_IMAGES]:
+        for uid in image_ids:
             upload = STORE.upload(uid)
-            if not upload or upload.get("owner_user_id") != user["id"]:
+            if (not upload or upload.get("owner_user_id") != user["id"]
+                    or upload.get("ticket_id")
+                    or upload.get("purpose") not in ("agent", "ticket")):
                 self._err(403, "forbidden", "An image is not yours.")
                 return
             clean_images.append(uid)
         history = list(session.get("history") or [])
-        if text:
-            history.append({"role": "user", "content": text,
-                            "transcript": bool(body.get("transcript"))})
+        history.append({
+            "role": "user",
+            "content": text or ("[图片]" if session.get("lang") == "zh" else "[Image]"),
+            "image_ids": clean_images,
+            "transcript": bool(body.get("transcript")),
+        })
         session = STORE.update_agent_session(session["id"], {
             "history": history[-30:],
-            "image_ids": list(dict.fromkeys((session.get("image_ids") or []) + clean_images))[:5],
+            # The request carries the unified composer's current attachments.
+            # Replacing (rather than unioning) also makes preview deletion real.
+            "image_ids": list(dict.fromkeys(clean_images)),
         })
         result = intake_agent.respond(self.api_key, self.model, session, user,
-                                      session.get("lang", "zh"))
+                                      session.get("lang", "zh"), STORE, UPLOAD_DIR)
         history = list(session.get("history") or [])
         history.append({"role": "assistant", "content": result.get("reply", "")})
         session = STORE.update_agent_session(session["id"], {
@@ -1690,11 +1700,20 @@ class Handler(BaseHTTPRequestHandler):
         draft = session["draft"]
         create_body = {
             "lang": session.get("lang", "zh"),
-            "repair_type": draft.get("repair_type"), "priority": draft.get("priority"),
-            "description": draft.get("description"), "date": body.get("date"),
-            "slots": body.get("slots"), "image_ids": draft.get("image_ids") or [],
+            "repair_type": body.get("repair_type") or draft.get("repair_type"),
+            "priority": body.get("priority") or draft.get("priority"),
+            "description": (body.get("description")
+                            if body.get("description") is not None
+                            else draft.get("description")),
+            "date": body.get("date"), "slots": body.get("slots"),
+            # Attachments come from the server-side session, not editable IDs
+            # supplied during confirmation.
+            "image_ids": session.get("image_ids") or [],
             "student_name": user.get("name", ""), "contact": body.get("contact", ""),
             "title": draft.get("title", ""),
+            "public_area": bool(body.get("public_area")),
+            "college": body.get("college"), "block": body.get("block"),
+            "dorm": body.get("dorm"),
         }
         self._create_ticket_for_user(user, create_body, agent_session_id=session["id"])
 

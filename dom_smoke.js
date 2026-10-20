@@ -516,7 +516,8 @@ async function runRole(page, module, cookie, opts) {
       chipHtml.slice(0, 90));
     check("nothing on the report page quotes a fixed duration",
       !/(固定工时|固定维修时长|预计维修时长|Fixed duration|labour standard)/.test(
-        id("typeChips").innerHTML + id("intakeOut").innerHTML));
+        id("typeChips").innerHTML + id("agentLog").innerHTML +
+        id("agentDraft").innerHTML));
 
     // The intake contract, checked straight against the API rather than through
     // the UI: the agent either asks what it is missing or says what to try, and

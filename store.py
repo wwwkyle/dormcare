@@ -8,7 +8,8 @@ A tiny JSON-file store. No database, no third-party package — the whole app
 runs on the Python standard library so it deploys anywhere without an install
 step.
 
-Collections: `tickets`, `workers`, `plans`, `users`, `sessions`. Accounts and
+Collections: `tickets`, `workers`, `plans`, `users`, `sessions`, `uploads`,
+`agent_sessions`. Accounts and
 sessions share the file so a restart keeps everyone signed in; passwords are
 stored as PBKDF2 digests (see auth.py), never in clear text.
 
@@ -46,8 +47,10 @@ class Store:
                     self._data = None
             if not isinstance(self._data, dict):
                 self._data = {"tickets": [], "workers": [], "plans": [],
-                              "users": [], "sessions": []}
-            for key in ("tickets", "workers", "plans", "users", "sessions"):
+                              "users": [], "sessions": [], "uploads": [],
+                              "agent_sessions": []}
+            for key in ("tickets", "workers", "plans", "users", "sessions",
+                        "uploads", "agent_sessions"):
                 self._data.setdefault(key, [])
             return self._data
 
@@ -95,6 +98,73 @@ class Store:
             self._data["tickets"] = [t for t in self._data["tickets"] if t["id"] != ticket_id]
             self.save()
             return len(self._data["tickets"]) < before
+
+    # ---- uploads -------------------------------------------------------- #
+
+    def uploads(self):
+        with _lock:
+            return list(self._data["uploads"])
+
+    def upload(self, upload_id):
+        with _lock:
+            return next((x for x in self._data["uploads"]
+                         if x.get("id") == upload_id), None)
+
+    def add_upload(self, upload):
+        with _lock:
+            upload.setdefault("id", "F" + uuid.uuid4().hex.upper())
+            upload.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
+            self._data["uploads"].append(upload)
+            self.save()
+            return upload
+
+    def update_upload(self, upload_id, patch):
+        with _lock:
+            item = self.upload(upload_id)
+            if item:
+                item.update(patch)
+                self.save()
+            return item
+
+    # ---- intake agent sessions ----------------------------------------- #
+
+    def agent_sessions(self):
+        with _lock:
+            return list(self._data["agent_sessions"])
+
+    def agent_session(self, session_id):
+        with _lock:
+            return next((x for x in self._data["agent_sessions"]
+                         if x.get("id") == session_id), None)
+
+    def add_agent_session(self, session):
+        with _lock:
+            session.setdefault("id", "A" + uuid.uuid4().hex.upper())
+            session.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
+            session.setdefault("updated_at", session["created_at"])
+            session.setdefault("history", [])
+            self._data["agent_sessions"].append(session)
+            self.save()
+            return session
+
+    def update_agent_session(self, session_id, patch):
+        with _lock:
+            item = self.agent_session(session_id)
+            if item:
+                item.update(patch)
+                item["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                self.save()
+            return item
+
+    def delete_agent_session(self, session_id):
+        with _lock:
+            before = len(self._data["agent_sessions"])
+            self._data["agent_sessions"] = [
+                x for x in self._data["agent_sessions"] if x.get("id") != session_id]
+            changed = len(self._data["agent_sessions"]) < before
+            if changed:
+                self.save()
+            return changed
 
     # ---- workers --------------------------------------------------------- #
 

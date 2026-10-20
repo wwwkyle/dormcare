@@ -129,11 +129,32 @@
 
       <label class="lbl" for="fDesc" data-i18n="lblDesc">故障描述（选填）</label>
       <textarea id="fDesc" rows="2" maxlength="1000" data-i18n-ph="phDesc"></textarea>
+      <div class="row">
+        <button type="button" class="btn ghost" id="speechBtn" data-i18n="speechStart">语音转文字</button>
+        <span class="hint" id="speechHint" data-i18n="speechHint">语音结果会填入描述，仍可编辑。</span>
+      </div>
+
+      <label class="lbl" for="photoInput" data-i18n="reportPhotos">故障照片（最多5张）</label>
+      <input id="photoInput" type="file" accept="image/jpeg,image/png" capture="environment" multiple>
+      <p class="hint" data-i18n="photoRules">仅 JPG/PNG，每张不超过 5MB。</p>
+      <div class="image-grid" id="photoPreview"></div>
 
       <div class="row">
         <button type="button" class="btn primary big" id="submitBtn" data-i18n="submitBtn">提交报修申请</button>
       </div>
       <p class="form-msg" id="formMsg"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2 data-i18n="agentTitle">对话式 AI 受理助手</h2></div>
+      <p class="hint" data-i18n="agentHint">可多轮补充信息；只有你确认草稿后才创建工单。</p>
+      <div class="agent-log" id="agentLog"></div>
+      <textarea id="agentText" rows="2" maxlength="2000" data-i18n-ph="agentPlaceholder"></textarea>
+      <div class="row">
+        <button type="button" class="btn primary" id="agentSend" data-i18n="agentSend">发送</button>
+        <button type="button" class="btn ghost" id="agentConfirm" data-i18n="agentConfirm" hidden>确认草稿并创建</button>
+      </div>
+      <pre class="agent-draft" id="agentDraft" hidden></pre>
     </section>
 
   </main>

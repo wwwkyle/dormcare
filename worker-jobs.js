@@ -13,6 +13,7 @@
 
   var allTickets = [];
   var allExpanded = false;
+  var completingId = "";
 
   function $(id) { return document.getElementById(id); }
 
@@ -56,8 +57,9 @@
         '" data-id="' + esc(ticketId) + '">' + esc(t(key)) + "</button>";
     }
     var closed = (st === "done" || st === "confirmed");
+    if (closed) return "";
     return (st === "pending" ? b("accepted", "btnAccept", "primary")
-                             : b("done", "btnComplete", closed ? "ghost" : "primary"));
+                             : b("done", "btnComplete", "primary"));
   }
 
   function poolRow(tk) {
@@ -85,6 +87,13 @@
         esc(tk.contact || "")));
     }
     if (tk.description) detail.push(row(t("tkDesc"), esc(tk.description)));
+    if (tk.image_ids && tk.image_ids.length) {
+      detail.push(row(t("reportPhotos"), '<span class="ticket-images">' +
+        tk.image_ids.map(function (id) {
+          return '<a href="/api/uploads/' + esc(id) + '" target="_blank" rel="noopener">' +
+            '<img src="/api/uploads/' + esc(id) + '" alt=""></a>';
+        }).join("") + "</span>"));
+    }
     if (tk.ai_reason) detail.push(row("🤖", esc(tk.ai_reason)));
     // A completed job carries the student's verdict back to the technician —
     // the feedback half of the loop, visible on the side that earned it.
@@ -142,6 +151,11 @@
     e.preventDefault();
     e.stopPropagation();
     var id = b.getAttribute("data-id");
+    if (b.getAttribute("data-act") === "done") {
+      completingId = id;
+      $("completionPhotos").click();
+      return;
+    }
     // `data-act` is already the target status; the server checks that this job
     // really is ours before accepting it.
     DC.post("/api/tickets/status", {
@@ -166,6 +180,38 @@
       this.textContent = t(allExpanded ? "collapseAll" : "expandAll");
     });
     $("ticketList").addEventListener("click", onAction);
+    $("completionPhotos").addEventListener("change", function () {
+      var files = Array.prototype.slice.call(this.files || []);
+      this.value = "";
+      if (!completingId || !files.length || files.length > 5) return;
+      Promise.all(files.map(function (file) {
+        return new Promise(function (resolve, reject) {
+          if (!/^(image\/jpeg|image\/png)$/.test(file.type) ||
+              file.size > 5 * 1024 * 1024) {
+            reject(new Error(t("photoInvalid"))); return;
+          }
+          var reader = new FileReader();
+          reader.onload = function () {
+            resolve({ mime: file.type, data: String(reader.result).split(",", 2)[1] });
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      })).then(function (images) {
+        return DC.post("/api/uploads", { purpose: "completion", images: images });
+      }).then(function (res) {
+        if (!res.ok) throw new Error(DC.errorText(res.data));
+        return DC.post("/api/tickets/status", {
+          id: completingId, status: "done", lang: DC.lang,
+          completion_image_ids: (res.data.uploads || []).map(function (x) { return x.id; })
+        });
+      }).then(function (res) {
+        if (!res.ok) throw new Error(DC.errorText(res.data));
+        completingId = ""; return loadPool();
+      }).catch(function (err) {
+        $("planMsg").textContent = err.message || t("err_generic");
+      });
+    });
   }
 
   DC.afterLang(function () {

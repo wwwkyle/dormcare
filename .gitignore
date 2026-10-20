@@ -5,6 +5,9 @@ __pycache__/
 .env.*
 api_key.env
 data/*.json
+data/uploads/
+data/test-uploads/
+uploads/
 server.*
 .idea/
 .vscode/

@@ -9,6 +9,7 @@ and a seeded technician and routes each call to the right one. The workload
 spans several colleges, and a ticket's address is the account that filed it —
 so it signs in as the resident of each room (see `Demo` in testclient).
 """
+import base64
 import json
 import re
 import sys
@@ -271,7 +272,14 @@ def main():
         s, st = call("/api/tickets/status", {"id": target, "status": "accepted"}, as_="worker")
         print(("PASS" if s == 200 else "FAIL") + "  technician accepts -> %s"
               % st.get("ticket", {}).get("status"))
-        s, st = call("/api/tickets/status", {"id": target, "status": "done"}, as_="worker")
+        proof = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\0" * 24).decode()
+        s, uploaded = call("/api/uploads", {
+            "purpose": "completion",
+            "images": [{"mime": "image/png", "data": proof}]}, as_="worker")
+        proof_id = uploaded["uploads"][0]["id"]
+        s, st = call("/api/tickets/status", {
+            "id": target, "status": "done",
+            "completion_image_ids": [proof_id]}, as_="worker")
         print(("PASS" if s == 200 else "FAIL") + "  technician completes -> %s"
               % st.get("ticket", {}).get("status"))
         s, fb = owner.call("/api/tickets/feedback", {"id": target, "rating": 5,

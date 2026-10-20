@@ -71,6 +71,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import ai_agents
 import auth
+import intake_agent
 from ai_agents import (AIError, DEFAULT_MODEL, MSG_NOT_IN_KB, MSG_OUT_OF_SCOPE,
                        advise_dispatch, advise_student, parse_intake,
                        summarize_plan, verify_key)
@@ -87,6 +88,7 @@ from scheduler import (PRIORITY_LEVELS, SLOT_MINUTES, assign_day, job_to_json,
                        next_workdays, repair_minutes, schedule_day,
                        schedule_index, slot_label)
 from store import Store
+from upload_service import (MAX_IMAGES, UploadError, public_upload, save_images)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 #: The store lives next to the app by default. `DORMCARE_DATA` points it
@@ -95,7 +97,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = (os.environ.get("DORMCARE_DATA")
              or os.path.join(BASE_DIR, "data", "store.json"))
 
-MAX_BODY_BYTES = 256 * 1024
+MAX_BODY_BYTES = 36 * 1024 * 1024
+UPLOAD_DIR = (os.environ.get("DORMCARE_UPLOAD_DIR")
+              or os.path.join(os.path.dirname(os.path.abspath(DATA_FILE)), "uploads"))
 RATE_LIMIT_MAX = 120
 RATE_LIMIT_WINDOW = 60
 
@@ -601,6 +605,15 @@ STATUS_LABELS = {
     "confirmed": {"zh": "已验收", "en": "Confirmed"},
 }
 
+# Persisted status values remain unchanged for old data/tests. These stages
+# expose the requested five-step business wording without a destructive migration.
+STATUS_STAGES = {
+    "pending": {"id": "pending", "zh": "待受理", "en": "Pending"},
+    "accepted": {"id": "assigned", "zh": "已派单 / 维修中", "en": "Assigned / In progress"},
+    "done": {"id": "awaiting_confirmation", "zh": "已完成待确认", "en": "Completed, awaiting confirmation"},
+    "confirmed": {"id": "closed", "zh": "关闭", "en": "Closed"},
+}
+
 #: Which statuses each role is allowed to move a ticket to.
 STATUS_ALLOWED = {
     ROLE_STUDENT: {"confirmed", "pending"},      # 验收 / 重新打开
@@ -661,6 +674,8 @@ def ticket_view(t, user, lang="zh", ctx=None):
                                              PRIORITY_LEVELS["normal"])[lang],
         "status": status,
         "status_label": STATUS_LABELS[status][lang],
+        "status_stage": STATUS_STAGES.get(status, STATUS_STAGES["pending"])["id"],
+        "status_stage_label": STATUS_STAGES.get(status, STATUS_STAGES["pending"])[lang],
         "assigned_worker": _worker_public(worker_record(wid) if wid else None,
                                           lang, with_phone=is_worker),
         "appointment": ({"start": entry["start"], "end": entry["end"],
@@ -688,6 +703,10 @@ def ticket_view(t, user, lang="zh", ctx=None):
     # The credit ledger: a finished job carries the student's own verdict.
     out["rating"] = t.get("rating") or 0
     out["feedback"] = t.get("feedback", "")
+    out["image_ids"] = list(t.get("image_ids") or [])
+    out["completion_image_ids"] = list(t.get("completion_image_ids") or [])
+    out["completed_at"] = t.get("completed_at") or t.get("done_at")
+    out["completed_by"] = t.get("completed_by") or t.get("assigned_worker") or ""
     return out
 
 
@@ -1046,6 +1065,39 @@ class Handler(BaseHTTPRequestHandler):
                              "role": user["role"]})
             return
 
+        if path.startswith("/api/uploads/"):
+            user = self._require(ROLE_STUDENT, ROLE_WORKER, ROLE_ADMIN)
+            if not user:
+                return
+            upload = STORE.upload(path.rsplit("/", 1)[-1])
+            if not upload:
+                self._err(404, "not_found", "Image not found.")
+                return
+            if not self._can_read_upload(upload, user):
+                self._err(403, "forbidden", "You cannot read this image.")
+                return
+            full = os.path.join(UPLOAD_DIR, os.path.basename(upload.get("filename", "")))
+            if not os.path.isfile(full):
+                self._err(404, "not_found", "Image file not found.")
+                return
+            with open(full, "rb") as fh:
+                self._send(200, fh.read(), upload.get("mime", "application/octet-stream"))
+            return
+
+        if path == "/api/agent/session":
+            user = self._require(ROLE_STUDENT)
+            if not user:
+                return
+            session = STORE.agent_session(params.get("id"))
+            if not session:
+                self._err(404, "not_found", "Agent session not found.")
+                return
+            if session.get("user_id") != user["id"]:
+                self._err(403, "forbidden", "That agent session is not yours.")
+                return
+            self._json(200, {"session": self._agent_session_view(session)})
+            return
+
         if path == "/api/workers":
             user = self._require(ROLE_STUDENT, ROLE_WORKER, ROLE_ADMIN)
             if not user:
@@ -1138,6 +1190,25 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             self._head_only = False
 
+    def _can_read_upload(self, upload, user):
+        if user["role"] == ROLE_ADMIN:
+            return True
+        if upload.get("owner_user_id") == user["id"] and user["role"] == ROLE_STUDENT:
+            return True
+        tid = upload.get("ticket_id")
+        ticket = STORE.ticket(tid) if tid else None
+        if not ticket:
+            return False
+        if user["role"] == ROLE_STUDENT:
+            return ticket.get("user_id") == user["id"]
+        return assignment_map(ticket.get("date", "")).get(tid) == acting_worker_id(user)
+
+    @staticmethod
+    def _agent_session_view(session):
+        return {k: session.get(k) for k in (
+            "id", "created_at", "updated_at", "history", "image_ids",
+            "draft", "ready", "safety_warning", "ticket_id")}
+
     # ---- POST ------------------------------------------------------------- #
 
     def do_POST(self):
@@ -1184,6 +1255,10 @@ class Handler(BaseHTTPRequestHandler):
             "/api/account/password": self._api_account_password,
             "/api/intake/parse": self._api_intake_parse,
             "/api/intake/advice": self._api_intake_advice,
+            "/api/uploads": self._api_uploads,
+            "/api/agent/session": self._api_agent_session,
+            "/api/agent/message": self._api_agent_message,
+            "/api/agent/confirm": self._api_agent_confirm,
             "/api/tickets": self._api_create_ticket,
             "/api/tickets/status": self._api_ticket_status,
             "/api/tickets/feedback": self._api_ticket_feedback,
@@ -1517,12 +1592,121 @@ class Handler(BaseHTTPRequestHandler):
         reply = advise_student(self.api_key, self.model, text, context, lang)
         self._json(200, {"reply": reply, "guard": None})
 
+    # ---- authenticated images + conversational intake ------------------ #
+
+    def _api_uploads(self, body, ip):
+        user = self._require(ROLE_STUDENT, ROLE_WORKER)
+        if not user:
+            return
+        purpose = body.get("purpose") or "ticket"
+        if user["role"] == ROLE_STUDENT and purpose == "completion":
+            self._err(403, "forbidden", "Only technicians upload completion proof.")
+            return
+        if user["role"] == ROLE_WORKER and purpose != "completion":
+            self._err(403, "forbidden", "Technicians may only upload completion proof.")
+            return
+        try:
+            uploads = save_images(STORE, UPLOAD_DIR, user["id"], body.get("images"),
+                                  purpose=purpose, draft_id=body.get("draft_id") or "")
+        except UploadError as exc:
+            self._err(400, exc.code, str(exc))
+            return
+        self._json(200, {"ok": True, "uploads": uploads,
+                         "limits": {"count": MAX_IMAGES, "bytes_each": 5 * 1024 * 1024}})
+
+    def _api_agent_session(self, body, ip):
+        user = self._require(ROLE_STUDENT)
+        if not user:
+            return
+        session = STORE.add_agent_session({
+            "user_id": user["id"], "lang": body_lang(body), "history": [],
+            "image_ids": [], "draft": None, "ready": False,
+            "safety_warning": "", "ticket_id": "",
+        })
+        self._json(200, {"ok": True, "session": self._agent_session_view(session)})
+
+    def _api_agent_message(self, body, ip):
+        user = self._require(ROLE_STUDENT)
+        if not user:
+            return
+        session = STORE.agent_session(body.get("id"))
+        if not session:
+            self._err(404, "not_found", "Agent session not found.")
+            return
+        if session.get("user_id") != user["id"]:
+            self._err(403, "forbidden", "That agent session is not yours.")
+            return
+        text = (body.get("text") or "").strip()[:2000]
+        image_ids = body.get("image_ids") or []
+        if not text and not image_ids:
+            self._err(400, "empty_text", "Text or images are required.")
+            return
+        clean_images = []
+        for uid in image_ids[:MAX_IMAGES]:
+            upload = STORE.upload(uid)
+            if not upload or upload.get("owner_user_id") != user["id"]:
+                self._err(403, "forbidden", "An image is not yours.")
+                return
+            clean_images.append(uid)
+        history = list(session.get("history") or [])
+        if text:
+            history.append({"role": "user", "content": text,
+                            "transcript": bool(body.get("transcript"))})
+        session = STORE.update_agent_session(session["id"], {
+            "history": history[-30:],
+            "image_ids": list(dict.fromkeys((session.get("image_ids") or []) + clean_images))[:5],
+        })
+        result = intake_agent.respond(self.api_key, self.model, session, user,
+                                      session.get("lang", "zh"))
+        history = list(session.get("history") or [])
+        history.append({"role": "assistant", "content": result.get("reply", "")})
+        session = STORE.update_agent_session(session["id"], {
+            "history": history[-30:], "draft": result.get("draft"),
+            "ready": bool(result.get("complete")),
+            "safety_warning": result.get("safety_warning", ""),
+        })
+        self._json(200, {"ok": True, "reply": result.get("reply", ""),
+                         "source": result.get("source"), "ready": session.get("ready"),
+                         "draft": session.get("draft"),
+                         "safety_warning": session.get("safety_warning", "")})
+
+    def _api_agent_confirm(self, body, ip):
+        user = self._require(ROLE_STUDENT)
+        if not user:
+            return
+        session = STORE.agent_session(body.get("id"))
+        if not session:
+            self._err(404, "not_found", "Agent session not found.")
+            return
+        if session.get("user_id") != user["id"]:
+            self._err(403, "forbidden", "That agent session is not yours.")
+            return
+        if session.get("ticket_id"):
+            self._err(409, "already_confirmed", "This draft was already confirmed.")
+            return
+        if not session.get("ready") or not session.get("draft"):
+            self._err(409, "draft_not_ready", "The draft is not ready.")
+            return
+        draft = session["draft"]
+        create_body = {
+            "lang": session.get("lang", "zh"),
+            "repair_type": draft.get("repair_type"), "priority": draft.get("priority"),
+            "description": draft.get("description"), "date": body.get("date"),
+            "slots": body.get("slots"), "image_ids": draft.get("image_ids") or [],
+            "student_name": user.get("name", ""), "contact": body.get("contact", ""),
+            "title": draft.get("title", ""),
+        }
+        self._create_ticket_for_user(user, create_body, agent_session_id=session["id"])
+
     # ---- student: create ticket ------------------------------------------ #
 
     def _api_create_ticket(self, body, ip):
         user = self._require(ROLE_STUDENT)
         if not user:
             return
+        self._create_ticket_for_user(user, body)
+
+    def _create_ticket_for_user(self, user, body, agent_session_id=""):
         lang = body.get("lang") if body.get("lang") in ("zh", "en") else "zh"
 
         # ------------------------------------------------------------------ #
@@ -1586,6 +1770,19 @@ class Handler(BaseHTTPRequestHandler):
         if priority not in PRIORITY_LEVELS:
             priority = "normal"
 
+        image_ids = body.get("image_ids") or []
+        if not isinstance(image_ids, list) or len(image_ids) > MAX_IMAGES:
+            self._err(400, "too_many_images", "At most five images are allowed.")
+            return
+        clean_images = []
+        for uid in image_ids:
+            upload = STORE.upload(uid)
+            if (not upload or upload.get("owner_user_id") != user["id"]
+                    or upload.get("ticket_id")):
+                self._err(403, "forbidden", "An image is unavailable.")
+                return
+            clean_images.append(uid)
+
         ticket = {
             # Ownership is stamped from the session, never from the body: that
             # is what makes "only your own tickets" enforceable later.
@@ -1609,8 +1806,16 @@ class Handler(BaseHTTPRequestHandler):
             "lang": lang,
             "ai_reason": (body.get("ai_reason") or "").strip()[:300],
             "ai_source": (body.get("ai_source") or "").strip()[:20],
+            "title": (body.get("title") or "").strip()[:80],
+            "image_ids": clean_images,
+            "completion_image_ids": [],
+            "agent_session_id": agent_session_id or "",
         }
         saved = STORE.add_ticket(ticket)
+        for uid in clean_images:
+            STORE.update_upload(uid, {"ticket_id": saved["id"], "draft_id": ""})
+        if agent_session_id:
+            STORE.update_agent_session(agent_session_id, {"ticket_id": saved["id"]})
         self._json(200, {"ok": True, "ticket": ticket_view(
             saved, user, lang, day_context(day, lang))})
 
@@ -1645,6 +1850,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._err(403, "forbidden", "That job is not on your schedule.")
                 return
 
+        current = t.get("status", "pending")
+        allowed_from = {
+            "accepted": ("pending",),
+            "done": ("accepted",),
+            "confirmed": ("done",),
+            "pending": ("done", "confirmed", "pending"),
+        }
+        if status != current and current not in allowed_from.get(status, ()):
+            self._err(409, "bad_status_transition",
+                      "That status does not follow the ticket workflow.")
+            return
+
         patch = {"status": status}
         now = datetime.now().isoformat(timespec="seconds")
         if status == "accepted":
@@ -1653,7 +1870,29 @@ class Handler(BaseHTTPRequestHandler):
             patch["assigned_worker"] = acting_worker_id(user)
             patch["accepted_at"] = now
         elif status == "done":
+            image_ids = body.get("completion_image_ids") or []
+            if not isinstance(image_ids, list) or not image_ids:
+                self._err(400, "completion_images_required",
+                          "At least one completion photo is required.")
+                return
+            if len(image_ids) > MAX_IMAGES:
+                self._err(400, "too_many_images", "At most five images are allowed.")
+                return
+            clean_images = []
+            for uid in image_ids:
+                upload = STORE.upload(uid)
+                if (not upload or upload.get("owner_user_id") != user["id"]
+                        or upload.get("purpose") != "completion"
+                        or (upload.get("ticket_id") and upload.get("ticket_id") != tid)):
+                    self._err(403, "forbidden", "A completion image is unavailable.")
+                    return
+                clean_images.append(uid)
             patch["done_at"] = now
+            patch["completed_at"] = now
+            patch["completed_by"] = acting_worker_id(user)
+            patch["completion_image_ids"] = clean_images
+            for uid in clean_images:
+                STORE.update_upload(uid, {"ticket_id": tid})
         elif status == "confirmed":
             patch["confirmed_at"] = now
         elif status == "pending":
@@ -2138,7 +2377,8 @@ def _local_rationale(day, jobs, stats, lang):
 def configure(api_key=None, model=None):
     Handler.api_key = (api_key or "").strip()
     Handler.key_source = "env" if Handler.api_key else ""
-    Handler.model = (model or os.environ.get("OPENROUTER_MODEL") or DEFAULT_MODEL).strip()
+    Handler.model = (model or os.environ.get("OPENAI_MODEL")
+                     or os.environ.get("OPENROUTER_MODEL") or DEFAULT_MODEL).strip()
     ensure_seed()
     return Handler
 
@@ -2149,7 +2389,8 @@ def resolve_api_key(argv):
             return argv[i + 1].strip()
         if a.startswith("--api-key="):
             return a.split("=", 1)[1].strip()
-    return (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    return (os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("OPENROUTER_API_KEY") or "").strip()
 
 
 def main():

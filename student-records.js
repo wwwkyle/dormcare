@@ -20,6 +20,14 @@
 
   function $(id) { return document.getElementById(id); }
 
+  function imageRow(label, ids) {
+    if (!ids || !ids.length) return "";
+    return row(label, '<span class="ticket-images">' + ids.map(function (id) {
+      return '<a href="/api/uploads/' + esc(id) + '" target="_blank" rel="noopener">' +
+        '<img src="/api/uploads/' + esc(id) + '" alt=""></a>';
+    }).join("") + "</span>");
+  }
+
   /* ====================================================================== */
   /*  one record row                                                        */
   /* ====================================================================== */
@@ -69,6 +77,11 @@
     }
     if (tk.description) detail.push(row(t("tkDesc"), esc(tk.description)));
     if (tk.ai_reason) detail.push(row("🤖", esc(tk.ai_reason)));
+    if (tk.image_ids && tk.image_ids.length) detail.push(imageRow(t("reportPhotos"), tk.image_ids));
+    if (tk.completion_image_ids && tk.completion_image_ids.length) {
+      detail.push(imageRow(t("completionPhotos"), tk.completion_image_ids));
+      if (tk.completed_at) detail.push(row(t("completedAt"), esc(tk.completed_at)));
+    }
 
     return '<details class="ticket fold-item st-' + esc(tk.status || "pending") +
       '" data-p="' + esc(tk.priority) + '">' +

@@ -26,6 +26,8 @@
   //: Off by default. The address is a property of the account, so the room
   //: fields stay hidden until the student says this is a shared area.
   var publicArea = false;
+  var reportUploads = [];
+  var agentSessionId = "";
 
   function $(id) { return document.getElementById(id); }
 
@@ -155,6 +157,40 @@
   function setAll(on) {
     slots = slots.map(function () { return on; });
     renderSlots();
+  }
+
+  function renderPhotos() {
+    var node = $("photoPreview");
+    node.innerHTML = reportUploads.map(function (x) {
+      return '<figure><img src="' + esc(x.url) + '" alt=""><button type="button" ' +
+        'class="btn tiny danger" data-remove-photo="' + esc(x.id) + '">×</button></figure>';
+    }).join("");
+  }
+
+  function fileData(file) {
+    return new Promise(function (resolve, reject) {
+      if (!/^(image\/jpeg|image\/png)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
+        reject(new Error(t("photoInvalid"))); return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        resolve({ mime: file.type, data: String(reader.result).split(",", 2)[1] });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function uploadFiles(files, purpose) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return Promise.resolve([]);
+    if (list.length + reportUploads.length > 5) return Promise.reject(new Error(t("photoTooMany")));
+    return Promise.all(list.map(fileData)).then(function (images) {
+      return DC.post("/api/uploads", { purpose: purpose || "ticket", images: images });
+    }).then(function (res) {
+      if (!res.ok) throw new Error(DC.errorText(res.data));
+      return res.data.uploads || [];
+    });
   }
 
   /* ====================================================================== */
@@ -324,6 +360,7 @@
       contact: $("fContact").value.trim(),
       ai_reason: aiReason,
       ai_source: ""
+      ,image_ids: reportUploads.map(function (x) { return x.id; })
     };
     if (publicArea) {
       payload.college = $("fCollege").value;
@@ -436,6 +473,70 @@
     });
 
     $("submitBtn").addEventListener("click", submitTicket);
+
+    $("photoInput").addEventListener("change", function () {
+      uploadFiles(this.files, "ticket").then(function (items) {
+        reportUploads = reportUploads.concat(items); renderPhotos();
+      }).catch(function (e) { $("formMsg").textContent = e.message; });
+      this.value = "";
+    });
+    $("photoPreview").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-remove-photo]");
+      if (!b) return;
+      reportUploads = reportUploads.filter(function (x) {
+        return x.id !== b.getAttribute("data-remove-photo");
+      });
+      renderPhotos();
+    });
+
+    var Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Speech) {
+      $("speechBtn").disabled = true;
+      $("speechHint").textContent = t("speechUnsupported");
+    } else {
+      $("speechBtn").addEventListener("click", function () {
+        var rec = new Speech();
+        rec.lang = DC.lang === "zh" ? "zh-CN" : "en-US";
+        rec.onresult = function (event) {
+          var text = event.results[0][0].transcript || "";
+          $("fDesc").value = ($("fDesc").value.trim() + " " + text).trim();
+        };
+        rec.onerror = function () { $("speechHint").textContent = t("speechFailed"); };
+        try { rec.start(); } catch (e) { $("speechHint").textContent = t("speechFailed"); }
+      });
+    }
+
+    $("agentSend").addEventListener("click", function () {
+      var text = $("agentText").value.trim();
+      var start = agentSessionId ? Promise.resolve() :
+        DC.post("/api/agent/session", { lang: DC.lang }).then(function (res) {
+          if (!res.ok) throw new Error(DC.errorText(res.data));
+          agentSessionId = res.data.session.id;
+        });
+      start.then(function () {
+        return DC.post("/api/agent/message", {
+          id: agentSessionId, text: text,
+          image_ids: reportUploads.map(function (x) { return x.id; })
+        });
+      }).then(function (res) {
+        if (!res.ok) throw new Error(DC.errorText(res.data));
+        $("agentLog").textContent = (res.data.safety_warning
+          ? "⚠ " + res.data.safety_warning + "\n" : "") + res.data.reply;
+        $("agentDraft").hidden = !res.data.draft;
+        $("agentDraft").textContent = res.data.draft
+          ? JSON.stringify(res.data.draft, null, 2) : "";
+        $("agentConfirm").hidden = !res.data.ready;
+      }).catch(function (e) { $("agentLog").textContent = e.message; });
+    });
+    $("agentConfirm").addEventListener("click", function () {
+      DC.post("/api/agent/confirm", {
+        id: agentSessionId, date: $("fDate").value, slots: selectedPairs(),
+        contact: $("fContact").value.trim()
+      }).then(function (res) {
+        if (!res.ok) throw new Error(DC.errorText(res.data));
+        window.location.replace("/records.html");
+      }).catch(function (e) { $("agentLog").textContent = e.message; });
+    });
   }
 
   DC.afterLang(function () {

@@ -22,6 +22,7 @@ and writes text.
 """
 
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -138,8 +139,10 @@ def call_model(api_key, model, messages, *, max_tokens=MAX_TOKENS,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
+    base = (os.environ.get("OPENAI_BASE_URL") or "").strip().rstrip("/")
+    url = (base + "/chat/completions") if base else OPENROUTER_URL
     req = urllib.request.Request(
-        OPENROUTER_URL,
+        url,
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Authorization": "Bearer " + api_key,

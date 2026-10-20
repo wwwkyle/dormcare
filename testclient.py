@@ -18,8 +18,10 @@ lets the tests assert on redirects without following them.
 
 import json
 import os
+import socket
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -70,6 +72,16 @@ def spawn_server(here, port, key=None, env_extra=None, log_name=None, data=None)
     proc = subprocess.Popen([sys.executable, "app.py"], cwd=here, env=env,
                             stdout=log, stderr=subprocess.STDOUT, text=True)
     proc._log_handle = log          # keep the handle alive with the process
+    # Account seeding performs PBKDF2 work and can take several seconds on a
+    # constrained Windows runner. Wait for the listening socket so suites do
+    # not fail their very first probe with a transient connection refusal.
+    deadline = time.time() + 30
+    while time.time() < deadline and proc.poll() is None:
+        try:
+            with socket.create_connection(("127.0.0.1", int(port)), timeout=.2):
+                break
+        except OSError:
+            time.sleep(.1)
     return proc, log_path
 
 

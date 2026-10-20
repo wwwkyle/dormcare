@@ -725,6 +725,74 @@ dormcare/
 
 ---
 
+## 多模态、完工凭证与对话受理（新增）
+
+学生报修页支持相机/相册多图（最多 5 张；每张解码后不超过 5MB；仅 JPEG/PNG）、
+预览删除和 Web Speech API 语音转写。语音结果只填入可继续编辑的描述框；浏览器不支持、
+用户拒权或识别失败时会显示降级提示，手工报修始终可用。Web Speech API 是否免费及是否
+把音频发送到浏览器厂商服务由浏览器实现决定，本项目不收取费用，也不保证所有浏览器可用。
+
+师傅将工单从 `accepted` 标记为 `done` 时必须提交至少一张完工图。学生记录页可查看
+报修图、完工图、完成时间、完工师傅，并确认或评价。持久化状态仍使用兼容值
+`pending / accepted / done / confirmed`；API 另返回 `status_stage` 和
+`status_stage_label`，对应“待受理 → 已派单/维修中 → 已完成待确认 → 关闭”。
+
+### 新增 API 精确契约
+
+- `POST /api/uploads`（学生/师傅）：JSON
+  `{"purpose":"ticket|agent|completion","draft_id":"","images":[{"mime":"image/png|image/jpeg","data":"base64"}]}`。
+  返回 `{"ok":true,"uploads":[{"id","mime","size","url"}],"limits":{...}}`。
+  学生不能上传 `completion`，师傅只能上传 `completion`。
+- `GET /api/uploads/<id>`（登录）：返回图片字节。仅图片所有者、工单学生、被派师傅或管理员可读；
+  上传目录没有公开静态映射。
+- `POST /api/agent/session`（学生）：`{"lang":"zh|en"}`，返回服务端会话。
+- `POST /api/agent/message`（学生）：`{"id","text","image_ids":[],"transcript":false}`，
+  返回 `reply/source/ready/draft/safety_warning`。会话保留最多 30 条历史。
+- `GET /api/agent/session?id=<id>`（学生）：返回自己的会话、历史、草稿和创建结果；跨账号 `403`。
+- `POST /api/agent/confirm`（学生）：`{"id","date":"YYYY-MM-DD","slots":[[start,end]],"contact":""}`。
+  只有 `ready=true` 的未确认草稿可创建一次工单。
+- `POST /api/tickets` 新增可选字段：`title`、`image_ids`（最多 5 个本人未绑定上传）。
+- `POST /api/tickets/status`：`status=done` 时新增必填
+  `completion_image_ids`（1-5 个当前师傅上传的完工图），否则
+  `400 completion_images_required`。
+
+Agent 草稿字段为 `title / repair_type / description / location / priority /
+image_ids / expected_date`。高风险关键词（漏电、燃气、冒烟/起火、大面积漏水等）由
+服务端规则强制提升为 `urgent` 并返回立即联系校园保卫/应急电话的提示。模型超时、网络错误、
+无效 JSON 会重试一次，之后使用确定性规则追问/成稿；不会阻塞手工报修。
+
+### 数据字段与兼容策略
+
+JSON Store 新增 `uploads`、`agent_sessions` 集合；工单新增惰性可选字段
+`title`、`image_ids`、`completion_image_ids`、`completed_at`、`completed_by`、
+`agent_session_id`。**无迁移脚本，惰性默认字段兼容**：旧 JSON 加载时自动补空集合，
+旧工单读取时将缺失字段视为空列表/空值，旧状态值不改写。
+
+上传实体记录 `id / owner_user_id / purpose / draft_id / ticket_id / mime / size /
+filename / created_at`。文件名由服务端随机生成，读取只使用记录内 basename；服务端校验
+base64 解码后大小和 PNG/JPEG magic bytes，客户端 MIME 声明不能绕过检查。
+
+### 环境变量
+
+- `DORMCARE_DATA`：JSON Store 路径，默认 `data/store.json`。
+- `DORMCARE_UPLOAD_DIR`：上传目录；默认与 `DORMCARE_DATA` 同目录下的 `uploads/`。
+  Docker 默认因此为 `/data/uploads`，与 Store 一起落在持久卷。
+- `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`：OpenAI 兼容接口。
+  `OPENAI_BASE_URL` 应为包含 `/v1` 的基地址，服务端追加 `/chat/completions`。
+- `OPENROUTER_API_KEY`、`OPENROUTER_MODEL`：继续兼容；OpenAI 变量优先。
+  API Key 只在环境变量或进程内存中，绝不写入 Store。
+
+本地验证：
+
+```bash
+python -m py_compile app.py store.py upload_service.py agent_prompts.py agent_tools.py intake_agent.py
+python test_auth.py
+python smoke_test.py
+python test_multimodal.py
+```
+
+---
+
 ## 可调参数 / Tunables
 
 全部集中在 `config.py`，改完全局生效：

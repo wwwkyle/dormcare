@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="studentRecordsTitle">我的报修记录 · DormCare</title>
+<meta name="description" content="DormCare 学生端 · 我的报修记录、进度与反馈评价。Student repair records of DormCare.">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app narrow">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">🎓</div>
+      <div class="brand-text">
+        <h1 data-i18n="studentRecordsTitle">我的报修记录 · DormCare</h1>
+        <p data-i18n="studentSub">DormCare 宿舍智能报修系统</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="lang" id="lang" role="group" aria-label="Language / 语言">
+        <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <div class="status" id="status" data-state="checking">
+        <span class="dot"></span><span id="statusText" data-i18n="statusChecking">连接中…</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="rolebar" data-rolebar>
+    <span class="here" data-i18n="roleStudent">学生</span>
+    <span class="rolebar-note" data-i18n="menuStudentRecords"></span>
+    <div class="userchip" id="userChip" hidden></div>
+  </nav>
+
+  <main class="stack">
+
+    <!-- 报修记录（可折叠） -->
+    <section class="card">
+      <div class="card-head">
+        <h2><span aria-hidden="true">📋</span> <span data-i18n="myTicketsTitle">报修记录</span></h2>
+        <div class="head-actions">
+          <span class="count" id="ticketCount"></span>
+          <button type="button" class="btn tiny" id="toggleAll" data-i18n="expandAll">展开全部</button>
+          <button type="button" class="btn tiny" id="reloadTickets" data-i18n="refresh">刷新</button>
+        </div>
+      </div>
+      <p class="hint" data-i18n="myTicketsHint">只显示你自己提交的单——点击任意一条可展开详情。</p>
+      <div class="fold-list" id="ticketList"></div>
+      <p class="form-msg" id="formMsg"></p>
+    </section>
+
+  </main>
+
+  <section class="setup-wrap">
+    <div class="setup" id="setup" hidden>
+      <h3><span aria-hidden="true">🔑</span> <span data-i18n="setupTitle">启用模型密钥</span></h3>
+      <p data-i18n-html="setupBody"></p>
+      <form id="setupForm" autocomplete="off">
+        <input type="password" id="setupKey" autocomplete="off" spellcheck="false"
+               data-i18n-ph="setupPlaceholder" data-i18n-aria="setupTitle">
+        <button type="submit" class="btn primary" id="setupBtn" data-i18n="setupSubmit">启用</button>
+      </form>
+      <p class="form-msg" id="setupMsg"></p>
+    </div>
+  </section>
+
+</div>
+<script src="/common.js"></script>
+<script src="/student-records.js"></script>
+</body>
+</html>

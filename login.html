@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="loginTitle">DormCare 登录</title>
+<meta name="description" content="DormCare 登录 — 学生、师傅与管理员使用各自的账号进入各自的界面。Sign in to DormCare.">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app auth-app">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">🔐</div>
+      <div class="brand-text">
+        <h1 data-i18n="loginTitle">DormCare 登录</h1>
+        <p data-i18n="loginSub">宿舍智能报修与反馈系统</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="lang" id="lang" role="group" aria-label="Language / 语言">
+        <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <div class="status" id="status" data-state="checking">
+        <span class="dot"></span><span id="statusText" data-i18n="statusChecking">连接中…</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="stack">
+
+    <!-- 登录与注册是两个并列的独立面板，不再互相遮挡 / sign in and sign-up,
+         side by side rather than hidden behind a tab -->
+    <div class="auth-split">
+
+      <!-- 登录 / sign in -->
+      <section class="card auth-pane">
+        <div class="card-head">
+          <h2><span aria-hidden="true">🔐</span>
+            <span id="loginPaneTitle" data-i18n="tabLogin">登录</span></h2>
+        </div>
+        <p class="hint" data-i18n="loginPaneHint"></p>
+
+        <form class="auth-form" id="loginForm" autocomplete="on">
+          <label class="lbl" for="loginUser" data-i18n="lblAccount">账号</label>
+          <input type="text" id="loginUser" name="username" maxlength="32" autocapitalize="off"
+                 autocomplete="username" spellcheck="false" data-i18n-ph="phAccount">
+
+          <label class="lbl" for="loginPass" data-i18n="lblPassword">密码</label>
+          <input type="password" id="loginPass" name="password" maxlength="128"
+                 autocomplete="current-password" data-i18n-ph="phPassword">
+
+          <div class="row">
+            <button type="submit" class="btn primary big" id="loginBtn" data-i18n="btnLogin">登录</button>
+          </div>
+          <p class="form-msg" id="loginMsg"></p>
+        </form>
+      </section>
+
+      <!-- 学生注册 / student sign-up -->
+      <section class="card auth-pane">
+        <div class="card-head">
+          <h2><span aria-hidden="true">📝</span>
+            <span id="registerPaneTitle" data-i18n="tabRegister">学生注册</span></h2>
+        </div>
+        <p class="hint" data-i18n="regHint"></p>
+
+        <form class="auth-form" id="registerForm" autocomplete="on">
+          <div class="grid2">
+            <div>
+              <label class="lbl" for="regUser" data-i18n="lblAccount">账号</label>
+              <input type="text" id="regUser" maxlength="32" autocapitalize="off"
+                     autocomplete="off" spellcheck="false" data-i18n-ph="phAccount">
+            </div>
+            <div>
+              <label class="lbl" for="regName" data-i18n="lblRegName">姓名</label>
+              <input type="text" id="regName" maxlength="40" autocomplete="off"
+                     data-i18n-ph="phRegName">
+            </div>
+          </div>
+
+          <div class="grid2">
+            <div>
+              <label class="lbl" for="regCollege" data-i18n="lblRegCollege">所属书院</label>
+              <select id="regCollege"></select>
+            </div>
+            <div>
+              <label class="lbl" for="regBlock" data-i18n="lblBlock">楼栋 / 座</label>
+              <select id="regBlock"></select>
+            </div>
+          </div>
+          <p class="blk-hint" id="regBlockHint"></p>
+
+          <label class="lbl" for="regDorm" data-i18n="lblRegDorm">宿舍号</label>
+          <input type="text" id="regDorm" maxlength="30" autocomplete="off"
+                 data-i18n-ph="phDorm">
+          <p class="blk-hint" data-i18n="regDormNote"></p>
+
+          <div class="grid2">
+            <div>
+              <label class="lbl" for="regPass" data-i18n="lblPassword">密码</label>
+              <input type="password" id="regPass" maxlength="128" autocomplete="new-password"
+                     data-i18n-ph="phPassword">
+            </div>
+            <div>
+              <label class="lbl" for="regPass2" data-i18n="regPassword2">确认密码</label>
+              <input type="password" id="regPass2" maxlength="128" autocomplete="new-password"
+                     data-i18n-ph="phPassword">
+            </div>
+          </div>
+
+          <div class="row">
+            <button type="submit" class="btn primary big" id="registerBtn"
+                    data-i18n="btnRegister">注册并登录</button>
+          </div>
+          <p class="form-msg" id="registerMsg"></p>
+        </form>
+      </section>
+
+    </div>
+
+    <!-- 演示账号 / demo accounts -->
+    <details class="card fold" open>
+      <summary>
+        <span aria-hidden="true">🧪</span>
+        <span id="demoTitle" data-i18n="demoTitle">演示账号</span>
+        <span class="chev" aria-hidden="true">▾</span>
+      </summary>
+      <p class="hint" data-i18n="demoHint"></p>
+      <table class="demo-table">
+        <thead>
+          <tr>
+            <th data-i18n="demoRole">角色</th>
+            <th data-i18n="demoAccount">账号</th>
+            <th data-i18n="demoPassword">密码</th>
+            <th data-i18n="demoRoom">报修地点</th>
+          </tr>
+        </thead>
+        <tbody id="demoBody"></tbody>
+      </table>
+    </details>
+
+  </main>
+
+  <section class="setup-wrap">
+    <div class="setup" id="setup" hidden>
+      <h3><span aria-hidden="true">🔑</span> <span data-i18n="setupTitle">启用模型密钥</span></h3>
+      <p data-i18n-html="setupBody"></p>
+      <form id="setupForm" autocomplete="off">
+        <input type="password" id="setupKey" autocomplete="off" spellcheck="false"
+               data-i18n-ph="setupPlaceholder" data-i18n-aria="setupTitle">
+        <button type="submit" class="btn primary" id="setupBtn" data-i18n="setupSubmit">启用</button>
+      </form>
+      <p class="form-msg" id="setupMsg"></p>
+    </div>
+  </section>
+
+</div>
+<script src="/common.js"></script>
+<script src="/login.js"></script>
+</body>
+</html>

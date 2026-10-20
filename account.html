@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="accTitle">账号设置 · DormCare</title>
+<meta name="description" content="DormCare 账号设置 — 更正宿舍信息与修改登录密码。Account settings of DormCare.">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app narrow">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" id="accMark" aria-hidden="true">🎓</div>
+      <div class="brand-text">
+        <h1 data-i18n="accTitle">账号设置 · DormCare</h1>
+        <p data-i18n="brandSub">宿舍智能报修与反馈系统</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="lang" id="lang" role="group" aria-label="Language / 语言">
+        <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <div class="status" id="status" data-state="checking">
+        <span class="dot"></span><span id="statusText" data-i18n="statusChecking">连接中…</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="rolebar" data-rolebar>
+    <span class="here" id="accRole">…</span>
+    <span class="rolebar-note" data-i18n="menuStudentAccount"></span>
+    <div class="userchip" id="userChip" hidden></div>
+  </nav>
+
+  <main class="stack">
+
+    <section class="card">
+      <div class="card-head">
+        <h2><span aria-hidden="true">🔑</span> <span id="accTitle" data-i18n="accTitle">账号设置</span></h2>
+      </div>
+      <p class="hint" data-i18n="accHint"></p>
+      <p class="hint" id="accRoomOnlyNote" hidden data-i18n="accNoRoom"></p>
+
+      <div class="grid2 acc-split">
+
+        <!-- 宿舍：仅学生可见（师傅与管理员没有宿舍，服务端也会拒绝） -->
+        <div class="acc-block" id="accRoomBlock">
+          <h3 data-i18n="accRoomTitle">我的宿舍</h3>
+          <p class="hint" data-i18n="accRoomHint"></p>
+          <p class="locked-value" id="accRoomNow"></p>
+
+          <label class="lbl" for="aCollege" data-i18n="lblCollege">书院</label>
+          <select id="aCollege"></select>
+          <p class="blk-hint" id="aBlockHint"></p>
+
+          <label class="lbl" for="aBlock" data-i18n="lblBlock">楼栋 / 座</label>
+          <select id="aBlock"></select>
+
+          <label class="lbl" for="aDorm" data-i18n="lblDorm">宿舍号</label>
+          <input type="text" id="aDorm" maxlength="30" autocomplete="off"
+                 data-i18n-ph="phDorm">
+
+          <div class="row">
+            <button type="button" class="btn primary" id="accRoomSave" data-i18n="accSaveRoom">保存宿舍信息</button>
+          </div>
+          <p class="form-msg" id="accRoomMsg"></p>
+        </div>
+
+        <!-- 密码：三种角色通用 -->
+        <div class="acc-block">
+          <h3 data-i18n="accPwTitle">修改密码</h3>
+          <p class="hint" data-i18n="accPwHint"></p>
+
+          <label class="lbl" for="aPwCur" data-i18n="accCurrentPw">当前密码</label>
+          <input type="password" id="aPwCur" maxlength="128" autocomplete="current-password">
+
+          <label class="lbl" for="aPwNew" data-i18n="accNewPw">新密码</label>
+          <input type="password" id="aPwNew" maxlength="128" autocomplete="new-password">
+
+          <label class="lbl" for="aPwNew2" data-i18n="accNewPw2">确认新密码</label>
+          <input type="password" id="aPwNew2" maxlength="128" autocomplete="new-password">
+
+          <div class="row">
+            <button type="button" class="btn primary" id="accPwSave" data-i18n="accSavePw">修改密码</button>
+          </div>
+          <p class="form-msg" id="accPwMsg"></p>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <section class="setup-wrap">
+    <div class="setup" id="setup" hidden>
+      <h3><span aria-hidden="true">🔑</span> <span data-i18n="setupTitle">启用模型密钥</span></h3>
+      <p data-i18n-html="setupBody"></p>
+      <form id="setupForm" autocomplete="off">
+        <input type="password" id="setupKey" autocomplete="off" spellcheck="false"
+               data-i18n-ph="setupPlaceholder" data-i18n-aria="setupTitle">
+        <button type="submit" class="btn primary" id="setupBtn" data-i18n="setupSubmit">启用</button>
+      </form>
+      <p class="form-msg" id="setupMsg"></p>
+    </div>
+  </section>
+
+</div>
+<script src="/common.js"></script>
+<script src="/account.js"></script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="workerPlanTitle">排班与派活 · DormCare</title>
+<meta name="description" content="DormCare 师傅端 · 生成当日路线、时间轴与未排入工单处理。Technician schedule of DormCare.">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark work" aria-hidden="true">🛠️</div>
+      <div class="brand-text">
+        <h1 data-i18n="workerPlanTitle">排班与派活 · DormCare</h1>
+        <p data-i18n="workerSub">DormCare 维修调度工作台</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="lang" id="lang" role="group" aria-label="Language / 语言">
+        <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <div class="status" id="status" data-state="checking">
+        <span class="dot"></span><span id="statusText" data-i18n="statusChecking">连接中…</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="rolebar" data-rolebar>
+    <span class="here" data-i18n="roleWorker">师傅</span>
+    <span class="rolebar-note" id="workerIdentity"></span>
+    <div class="userchip" id="userChip" hidden></div>
+  </nav>
+
+  <main class="stack">
+
+    <!-- ① 排班控制 -->
+    <section class="card">
+      <div class="card-head">
+        <h2><span aria-hidden="true">⚡</span> <span data-i18n="dispatchTitle">AI 智能派活</span></h2>
+        <span class="tag ai" data-i18n="tagRag">RAG</span>
+      </div>
+      <p class="hint" data-i18n="dispatchHint">系统用确定性算法按「固定工时 + 书院路程规则 + 学生空闲时间」自动排班，再由 AI 依据知识库生成逐单作业指引。</p>
+
+      <div class="grid3 toolbar">
+        <div>
+          <label class="lbl" data-i18n="lblWorker">维修师傅</label>
+          <!-- Locked to the signed-in account: a technician cannot schedule
+               somebody else's day, so this is a read-out, not a picker. -->
+          <p class="locked-value" id="wWorkerSelf" data-i18n="statusChecking">…</p>
+        </div>
+        <div>
+          <label class="lbl" for="wDate" data-i18n="lblWorkDate">排班日期</label>
+          <select id="wDate"></select>
+        </div>
+        <div>
+          <label class="lbl" for="wCollege" data-i18n="lblFilterCollege">路线筛选</label>
+          <select id="wCollege"></select>
+        </div>
+      </div>
+
+      <div class="row">
+        <button type="button" class="btn primary big" id="optimizeBtn" data-i18n="optimizeBtn">⚡ 生成 AI 排班</button>
+        <button type="button" class="btn ghost" id="dispatchBtn" data-i18n="dispatchBtn">AI 逐单派活说明</button>
+        <button type="button" class="btn ghost" id="rationaleBtn" data-i18n="rationaleBtn">排班依据</button>
+        <button type="button" class="btn ghost" id="reloadTickets" data-i18n="refresh">刷新</button>
+      </div>
+      <p class="form-msg" id="planMsg"></p>
+    </section>
+
+    <!-- ② 统计 -->
+    <section class="stats" id="statRow" hidden></section>
+
+    <!-- ③ 时间轴 -->
+    <section class="card" id="timelineCard" hidden>
+      <div class="card-head">
+        <h2><span aria-hidden="true">🧭</span> <span data-i18n="timelineTitle">当日路线时间轴</span></h2>
+        <div class="head-actions">
+          <span class="count mono" id="timelineMeta"></span>
+        </div>
+      </div>
+      <div class="timeline" id="timeline"></div>
+      <div class="unsched" id="unschedBox" hidden></div>
+    </section>
+
+    <!-- ④ AI 输出 -->
+    <section class="card" id="aiCard" hidden>
+      <div class="card-head">
+        <h2><span aria-hidden="true">🤖</span> <span id="aiCardTitle" data-i18n="aiCardTitle">AI 作业指引</span></h2>
+        <span class="tag ai" id="aiModeTag"></span>
+      </div>
+      <div class="ai-out prose" id="aiOut"></div>
+    </section>
+
+  </main>
+
+  <section class="setup-wrap">
+    <div class="setup" id="setup" hidden>
+      <h3><span aria-hidden="true">🔑</span> <span data-i18n="setupTitle">启用模型密钥</span></h3>
+      <p data-i18n-html="setupBody"></p>
+      <form id="setupForm" autocomplete="off">
+        <input type="password" id="setupKey" autocomplete="off" spellcheck="false"
+               data-i18n-ph="setupPlaceholder" data-i18n-aria="setupTitle">
+        <button type="submit" class="btn primary" id="setupBtn" data-i18n="setupSubmit">启用</button>
+      </form>
+      <p class="form-msg" id="setupMsg"></p>
+    </div>
+  </section>
+
+</div>
+<script src="/common.js"></script>
+<script src="/worker-plan.js"></script>
+</body>
+</html>

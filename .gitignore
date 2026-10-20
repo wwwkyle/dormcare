@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*
+api_key.env
+data/*.json
+server.*
+.idea/
+.vscode/

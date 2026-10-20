@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="workerJobsTitle">我的工单 · DormCare</title>
+<meta name="description" content="DormCare 师傅端 — 派给我的工单，接单与完工。Technician jobs of DormCare.">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark work" aria-hidden="true">🛠️</div>
+      <div class="brand-text">
+        <h1 data-i18n="workerJobsTitle">我的工单 · DormCare</h1>
+        <p data-i18n="workerSub">DormCare 维修调度工作台</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="lang" id="lang" role="group" aria-label="Language / 语言">
+        <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <div class="status" id="status" data-state="checking">
+        <span class="dot"></span><span id="statusText" data-i18n="statusChecking">连接中…</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="rolebar" data-rolebar>
+    <span class="here" data-i18n="roleWorker">师傅</span>
+    <span class="rolebar-note" id="workerIdentity"></span>
+    <div class="userchip" id="userChip" hidden></div>
+  </nav>
+
+  <main class="stack">
+
+    <!-- 我的工单（可折叠） -->
+    <section class="card">
+      <div class="card-head">
+        <h2><span aria-hidden="true">📋</span> <span data-i18n="poolTitleMine">我的工单</span></h2>
+        <div class="head-actions">
+          <span class="count" id="poolCount"></span>
+          <button type="button" class="btn tiny" id="toggleAll" data-i18n="expandAll">展开全部</button>
+          <button type="button" class="btn tiny" id="reloadTickets" data-i18n="refresh">刷新</button>
+        </div>
+      </div>
+      <p class="hint" data-i18n="poolHintMine">系统按工种与持证要求派给你的工单——别人的活不会出现在这里。</p>
+      <div class="fold-list" id="ticketList"></div>
+      <p class="form-msg" id="planMsg"></p>
+    </section>
+
+  </main>
+
+  <section class="setup-wrap">
+    <div class="setup" id="setup" hidden>
+      <h3><span aria-hidden="true">🔑</span> <span data-i18n="setupTitle">启用模型密钥</span></h3>
+      <p data-i18n-html="setupBody"></p>
+      <form id="setupForm" autocomplete="off">
+        <input type="password" id="setupKey" autocomplete="off" spellcheck="false"
+               data-i18n-ph="setupPlaceholder" data-i18n-aria="setupTitle">
+        <button type="submit" class="btn primary" id="setupBtn" data-i18n="setupSubmit">启用</button>
+      </form>
+      <p class="form-msg" id="setupMsg"></p>
+    </div>
+  </section>
+
+</div>
+<script src="/common.js"></script>
+<script src="/worker-jobs.js"></script>
+</body>
+</html>

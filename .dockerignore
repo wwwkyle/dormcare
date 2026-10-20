@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.log
+.git/
+.gitignore
+.env
+.env.*
+api_key.env
+data/*.json
+server.*
+test_*.py
+testclient.py
+smoke_test.py
+edge_cases.py
+rule_trace.py
+verify_live.py
+dom_smoke.js

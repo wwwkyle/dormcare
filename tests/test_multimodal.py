@@ -9,7 +9,8 @@ from pathlib import Path
 from testclient import (DEMO_STUDENT, DEMO_STUDENT_2, DEMO_WORKERS, Client,
                         reset_store, server_output, spawn_server, store_path)
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(HERE))
 PORT = 3118
 BASE = "http://127.0.0.1:%d" % PORT
 PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 24

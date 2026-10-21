@@ -6,10 +6,12 @@ import sys
 import time
 from pathlib import Path
 
+HERE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(HERE / "tests"))
+sys.path.insert(0, str(HERE))
 from testclient import (DEMO_STUDENT, DEMO_WORKERS, Client, Demo, reset_store,
                         server_output, spawn_server, store_path)
 
-HERE = Path(__file__).resolve().parent
 PORT = 3112
 BASE = "http://127.0.0.1:%d" % PORT
 

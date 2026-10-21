@@ -6,10 +6,13 @@ import re
 import time
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from testclient import (DEMO_STUDENT, DEMO_STUDENT_2, DEMO_WORKERS, Client, Demo,
                         reset_store, server_output, spawn_server, store_path)
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 PORT = 3113
 BASE = "http://127.0.0.1:%d" % PORT
 

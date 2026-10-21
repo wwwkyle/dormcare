@@ -6,7 +6,7 @@ hard rule on the merged result.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scheduler import schedule_day
 
 DAY = "2026-09-22"

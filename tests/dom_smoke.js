@@ -10,7 +10,7 @@
  * every request, and asserts that a session of the wrong role is redirected
  * away.
  *
- * Usage: node dom_smoke.js
+ * Usage: node tests/dom_smoke.js
  */
 "use strict";
 
@@ -20,7 +20,7 @@ const fs = require("fs");
 const path = require("path");
 
 const BASE = "http://127.0.0.1:3000";
-const DIR = __dirname;
+const DIR = path.join(__dirname, "..", "web", "js");
 
 /* ------------------------------------------------------------------ fetch */
 

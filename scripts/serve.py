@@ -13,7 +13,8 @@ import sys
 import time
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(HERE / "tests"))
 sys.path.insert(0, str(HERE))
 from testclient import (DEMO_ADMIN, DEMO_STUDENT, DEMO_WORKERS,  # noqa: E402
                         Client)

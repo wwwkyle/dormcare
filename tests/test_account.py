@@ -34,7 +34,7 @@ B. Self-service. Correcting a room and changing a password used to require
 
 Run it against a live server:
 
-    python test_account.py          # starts its own server on port 3114
+    python tests/test_account.py    # starts its own server on port 3114
 """
 
 import sys
@@ -45,7 +45,7 @@ from testclient import (DEMO_ADMIN, DEMO_STUDENT, DEMO_WORKERS, PAGE_OWNER,
                         RETIRED_PAGES, Client, reset_store, server_output,
                         spawn_server, store_path)
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 PORT = 3114
 BASE = "http://127.0.0.1:%d" % PORT
 

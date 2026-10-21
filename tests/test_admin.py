@@ -28,7 +28,7 @@ Written as boundaries, exactly like `test_auth.py`:
 
 Run it against a live server:
 
-    python test_admin.py           # starts its own server on port 3113
+    python tests/test_admin.py     # starts its own server on port 3113
 """
 
 import json
@@ -39,7 +39,7 @@ from pathlib import Path
 from testclient import (DEMO_STUDENT, DEMO_WORKERS, Client, reset_store,
                         server_output, spawn_server, store_path)
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 PORT = 3113
 BASE = "http://127.0.0.1:%d" % PORT
 

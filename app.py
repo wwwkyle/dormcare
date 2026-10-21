@@ -92,6 +92,7 @@ from store import Store
 from upload_service import (MAX_IMAGES, UploadError, public_upload, save_images)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_ROOT = os.path.join(BASE_DIR, "web")
 #: The store lives next to the app by default. `DORMCARE_DATA` points it
 #: somewhere else, which is what lets each test suite run against its own empty
 #: file instead of all of them sharing — and corrupting — one database.
@@ -147,39 +148,39 @@ COOKIE_SECURE = os.environ.get("DORMCARE_COOKIE_SECURE", "").strip().lower() in 
 # so there is a single front door, while the consoles behind it stay exactly as
 # separate as they were. Each console keeps a "back to the menu" control.
 STATIC_FILES = {
-    "/login.html": ("login.html", "text/html; charset=utf-8", None),
-    "/login.js": ("login.js", "application/javascript; charset=utf-8", None),
-    "/styles.css": ("styles.css", "text/css; charset=utf-8", None),
-    "/common.js": ("common.js", "application/javascript; charset=utf-8", None),
-    "/menu.html": ("menu.html", "text/html; charset=utf-8", ANY_ROLE),
-    "/menu.js": ("menu.js", "application/javascript; charset=utf-8", ANY_ROLE),
+    "/login.html": ("pages/login.html", "text/html; charset=utf-8", None),
+    "/login.js": ("js/login.js", "application/javascript; charset=utf-8", None),
+    "/styles.css": ("css/styles.css", "text/css; charset=utf-8", None),
+    "/common.js": ("js/common.js", "application/javascript; charset=utf-8", None),
+    "/menu.html": ("pages/menu.html", "text/html; charset=utf-8", ANY_ROLE),
+    "/menu.js": ("js/menu.js", "application/javascript; charset=utf-8", ANY_ROLE),
 
     # ---- student: one page per menu card ---------------------------------- #
-    "/report.html": ("report.html", "text/html; charset=utf-8", ROLE_STUDENT),
-    "/student-report.js": ("student-report.js", "application/javascript; charset=utf-8", ROLE_STUDENT),
-    "/records.html": ("records.html", "text/html; charset=utf-8", ROLE_STUDENT),
-    "/student-records.js": ("student-records.js", "application/javascript; charset=utf-8", ROLE_STUDENT),
+    "/report.html": ("pages/report.html", "text/html; charset=utf-8", ROLE_STUDENT),
+    "/student-report.js": ("js/student-report.js", "application/javascript; charset=utf-8", ROLE_STUDENT),
+    "/records.html": ("pages/records.html", "text/html; charset=utf-8", ROLE_STUDENT),
+    "/student-records.js": ("js/student-records.js", "application/javascript; charset=utf-8", ROLE_STUDENT),
     # account settings: the password half is valid for every role, and the page
     # hides the room half from the two that have no room — so ANY_ROLE, not
     # ROLE_STUDENT, is the honest gate here.
-    "/account.html": ("account.html", "text/html; charset=utf-8", ANY_ROLE),
-    "/account.js": ("account.js", "application/javascript; charset=utf-8", ANY_ROLE),
+    "/account.html": ("pages/account.html", "text/html; charset=utf-8", ANY_ROLE),
+    "/account.js": ("js/account.js", "application/javascript; charset=utf-8", ANY_ROLE),
 
     # ---- technician ------------------------------------------------------- #
-    "/plan.html": ("plan.html", "text/html; charset=utf-8", ROLE_WORKER),
-    "/worker-plan.js": ("worker-plan.js", "application/javascript; charset=utf-8", ROLE_WORKER),
-    "/jobs.html": ("jobs.html", "text/html; charset=utf-8", ROLE_WORKER),
-    "/worker-jobs.js": ("worker-jobs.js", "application/javascript; charset=utf-8", ROLE_WORKER),
+    "/plan.html": ("pages/plan.html", "text/html; charset=utf-8", ROLE_WORKER),
+    "/worker-plan.js": ("js/worker-plan.js", "application/javascript; charset=utf-8", ROLE_WORKER),
+    "/jobs.html": ("pages/jobs.html", "text/html; charset=utf-8", ROLE_WORKER),
+    "/worker-jobs.js": ("js/worker-jobs.js", "application/javascript; charset=utf-8", ROLE_WORKER),
 
     # ---- administrator ---------------------------------------------------- #
-    "/overview.html": ("overview.html", "text/html; charset=utf-8", ROLE_ADMIN),
-    "/admin-overview.js": ("admin-overview.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
-    "/tickets.html": ("tickets.html", "text/html; charset=utf-8", ROLE_ADMIN),
-    "/admin-tickets.js": ("admin-tickets.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
-    "/users.html": ("users.html", "text/html; charset=utf-8", ROLE_ADMIN),
-    "/admin-users.js": ("admin-users.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
-    "/roster.html": ("roster.html", "text/html; charset=utf-8", ROLE_ADMIN),
-    "/admin-roster.js": ("admin-roster.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
+    "/overview.html": ("pages/overview.html", "text/html; charset=utf-8", ROLE_ADMIN),
+    "/admin-overview.js": ("js/admin-overview.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
+    "/tickets.html": ("pages/tickets.html", "text/html; charset=utf-8", ROLE_ADMIN),
+    "/admin-tickets.js": ("js/admin-tickets.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
+    "/users.html": ("pages/users.html", "text/html; charset=utf-8", ROLE_ADMIN),
+    "/admin-users.js": ("js/admin-users.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
+    "/roster.html": ("pages/roster.html", "text/html; charset=utf-8", ROLE_ADMIN),
+    "/admin-roster.js": ("js/admin-roster.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
 }
 
 #: The three consolidated consoles that used to hold every section of a role on
@@ -1252,8 +1253,12 @@ class Handler(BaseHTTPRequestHandler):
             if needed != ANY_ROLE and self.user["role"] != needed:
                 self._redirect(HOME_BY_ROLE[self.user["role"]])
                 return
-        full = os.path.join(BASE_DIR, filename)
-        if os.path.basename(filename).startswith(".") or not os.path.isfile(full):
+        full = os.path.abspath(os.path.join(STATIC_ROOT, filename))
+        # STATIC_FILES is an explicit URL whitelist. Keep a root containment
+        # check as a second line of defence if an entry is edited later.
+        if (os.path.commonpath((STATIC_ROOT, full)) != STATIC_ROOT
+                or any(part.startswith(".") for part in filename.split("/"))
+                or not os.path.isfile(full)):
             self._err(404, "not_found", "not found")
             return
         with open(full, "rb") as fh:

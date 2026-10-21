@@ -61,7 +61,7 @@ docker run -p 3000:3000 -v dormcare-data:/data \
 
 **一张卡片 = 一个页面 = 一件事。** 以前三种角色各是一个长页面，学生端把报修表单、
 报修记录、账号设置堆在一起。现在 11 个页面各管一件事，页面上**不会出现别的区块**——
-`dom_smoke.js` 对每个页面都断言「不携带其他区块的控件」，防止它悄悄长回去。
+`tests/dom_smoke.js` 对每个页面都断言「不携带其他区块的控件」，防止它悄悄长回去。
 
 这**不放宽任何权限**：每个页面仍然只属于一个角色（`/account.html` 除外，见下），
 从地址栏输别人的页面照样 `303` 回菜单，菜单里的卡片只是链接。
@@ -75,7 +75,7 @@ docker run -p 3000:3000 -v dormcare-data:/data \
 
 > 演示数据是**一个账号一间房**。之前 10 张工单全挂在 `2024001` 名下、横跨 9 个书院，
 > 那是因为地址字段不跟账号校验；现在地址是账号的属性，演示数据也必须拆成
-> 10 个住在不同房间的学生（见 `serve.py`）。
+> 10 个住在不同房间的学生（见 `scripts/serve.py`）。
 >
 > 其中第 11 张单是**故意排不进去**的（40 分钟的电路维修，学生只留了 30 分钟），
 > 用来演示「排不进当天」这条闭环 —— 师傅端会出现处理面板，学生端会收到提示。
@@ -117,7 +117,7 @@ docker run -p 3000:3000 -v dormcare-data:/data \
 做法不只是「前端不画」：`/api/intake/parse` **不再返回** `duration_minutes`，
 `ai_agents._context_line()` 也**不再把工时告诉模型** —— 不递给模型一个数字，
 是让它不去引用这个数字最可靠的办法。提示词里同时明令禁止出现任何分钟数。
-`edge_cases.py` 会扫描学生能读到的每一段文本，出现 `\d+ 分钟` 直接判失败。
+`tests/edge_cases.py` 会扫描学生能读到的每一段文本，出现 `\d+ 分钟` 直接判失败。
 
 学生端仍然会看到**负责人、上门时段、排队状态、空闲时间、紧急度**，以及：
 
@@ -244,7 +244,7 @@ docker run -p 3000:3000 -v dormcare-data:/data \
   不该是「自取」的。管理员账号由 `SEED_USERS` 预置，师傅账号由管理员在管理台发放。
 - **管理员不是角色冒充型超级用户**：最高权限只存在于独立工单管理域；它不能调用学生 AI、
   学生报修、师傅接单或排班接口，也不能借用任何人的会话。
-  三组控制台互相 `403` / 重定向，方向是双向的（见 `test_admin.py`）。
+  三组控制台互相 `403` / 重定向，方向是双向的（见 `tests/test_admin.py`）。
 - **写操作校验归属**：`/api/tickets/status`、`/api/tickets/delete`、
   `/api/tickets/feedback` 都会先确认这张单确实属于调用者，再动手（防 IDOR）。
 - **会话是服务端可撤销的不透明令牌**：HttpOnly + SameSite=Lax Cookie，
@@ -266,22 +266,22 @@ docker run -p 3000:3000 -v dormcare-data:/data \
 | **不同类型预计维修时间不一样，要固定** | `config.REPAIR_TYPES[*].minutes` — 查表，不估算、不压缩（**师傅端可见，学生端不可见**） |
 | **书院之间往返 15 分钟** | `TRAVEL_RULES["cross_college_minutes"] = 15` |
 | **书院内 5 分钟** | `TRAVEL_RULES["same_college_minutes"] = 5` |
-| **学生端与师傅端分开** | 各自的页面与脚本：`report/records/account`（学生）、`plan/jobs`（师傅），互不引用，只共享 `common.js`；由服务端按角色逐页放行 |
+| **学生端与师傅端分开** | 各自的页面与脚本：`report/records/account`（学生）、`plan/jobs`（师傅），互不引用，只共享 `web/js/common.js`；由服务端按角色逐页放行 |
 | **不同的人登录后是不同的界面** | `auth.py` + `/api/auth/login`；`GET /` 按会话角色重定向，页面与脚本都在 `STATIC_FILES` 里声明所需角色 |
 | **学生端不显示排班规则与固定工时** | 学生页无规则卡片、类型 chip 无分钟数、无时长汇总框；`/api/intake/parse` 不返回 `duration_minutes`，AI 提示词禁止出现分钟数 |
-| **师傅端不显示排班规则（系统固定值）** | 排班规则整块卡片已删除；`common.js` 的 `renderRules()` 与 `rules*` 文案一并移除（不是隐藏，是不存在）；`dom_smoke.js` 对**每一个**页面各断言一次 `#rulesGrid === null` |
-| **登录与学生注册分开显示** | `login.html` 去掉 tab 切换，改为 `.auth-split` 两个**并列面板**同时可见；样式窄屏自动堆叠为上下两块 |
-| **不再出现「固定工时与路程规则由系统确定性执行…」这句话** | 删除 `common.js` 的 `footNote` 文案（中英各一条）与三个页面的 `<footer class="foot">` 段落 |
+| **师傅端不显示排班规则（系统固定值）** | 排班规则整块卡片已删除；`web/js/common.js` 的 `renderRules()` 与 `rules*` 文案一并移除（不是隐藏，是不存在）；`tests/dom_smoke.js` 对**每一个**页面各断言一次 `#rulesGrid === null` |
+| **登录与学生注册分开显示** | `web/pages/login.html` 去掉 tab 切换，改为 `.auth-split` 两个**并列面板**同时可见；样式窄屏自动堆叠为上下两块 |
+| **不再出现「固定工时与路程规则由系统确定性执行…」这句话** | 删除 `web/js/common.js` 的 `footNote` 文案（中英各一条）与三个页面的 `<footer class="foot">` 段落 |
 | **增加一个管理员端** | 四个页面 + 四个脚本（`overview` / `tickets` / `users` / `roster`）+ `/api/admin/*`；`auth.ROLE_ADMIN`；页面级 + 接口级双向隔离，且管理员**打不开**任何学生或师傅的页面 |
 | **未排入当天的工单要给提示、可顺路做或建议改约** | `todo_view` 式的 `unscheduled_view()` 详情 + `/api/tickets/offroute`（师傅）+ `/api/tickets/reschedule`（学生）；`ticket_view.queue_state` 让学生端看到 `unplaced / off_route / reschedule` |
 | **反馈闭环**（系统的「反馈」二字） | 工单状态 `pending → accepted → done → confirmed`；学生可评分 1-5 星 + 留言，**1-2 星自动把工单退回待办队列** |
 | **报修记录可折叠** | `<details class="ticket fold-item">` 原生折叠行 + 「展开全部 / 收起全部」（学生端、师傅端、管理端的工单与账号行都用同一套语法） |
 | **学生自己可以更正宿舍** | `POST /api/account/room` —— 只作用于当前会话（请求体里没有账号 id，结构上不可能改到别人）；校验与注册/后台同一套；改完**向后生效**，已提交工单的地址不改写 |
 | **学生自己可以修改密码** | `POST /api/account/password` —— 必须给出当前密码，吊销该账号其它所有会话、保留当前会话；三种角色都能改自己的 |
-| **三端都有主菜单，点进详情页，可返回** | `menu.html` + `menu.js`（`ANY_ROLE` 放行给所有已登录者），`HOME_BY_ROLE` 三角色统一指向它；`common.js` 在身份栏渲染「☰ 主菜单」，每个详情页自动都有返回 |
-| **点进去只包含该功能，不含其他内容** | 三个长页面拆成 **11 个单页**：`report` / `records` / `account` / `plan` / `jobs` / `overview` / `tickets` / `users` / `roster` / `menu` / `login`。每页只加载 `common.js` + **自己那一个**模块；`dom_smoke.js` 对每个页面断言「不携带其他区块的控件」 ||
+| **三端都有主菜单，点进详情页，可返回** | `web/pages/menu.html` + `web/js/menu.js`（`ANY_ROLE` 放行给所有已登录者），`HOME_BY_ROLE` 三角色统一指向它；`web/js/common.js` 在身份栏渲染「☰ 主菜单」，每个详情页自动都有返回 |
+| **点进去只包含该功能，不含其他内容** | 三个长页面拆成 **11 个单页**：`report` / `records` / `account` / `plan` / `jobs` / `overview` / `tickets` / `users` / `roster` / `menu` / `login`。每页只加载 `/common.js` + **自己那一个**模块；`tests/dom_smoke.js` 对每个页面断言「不携带其他区块的控件」 ||
 | **（拆分后的）权限没有被放宽** | `testclient.PAGE_OWNER` 是页面→唯一属主的完整清单，`smoke_test` / `test_account` / `dom_smoke` 三处都按它跑全矩阵：**属主 200，其余角色 303 回菜单，匿名 303 去登录**；旧的 6 个合并页面文件已删除并断言 `404`（留着就是一份没人守的后门） |
-| 中英双语 | 前端全量 i18n（`common.js` 的 `I18N`）+ 服务端双语提示词与双语固定回复 |
+| 中英双语 | 前端全量 i18n（`web/js/common.js` 的 `I18N`）+ 服务端双语提示词与双语固定回复 |
 
 
 ### 八个书院 / The eight colleges
@@ -314,7 +314,7 @@ Browser ──POST /api/...──▶ app.py ──HTTPS──▶ OpenRouter /cha
                              └── store.py      JSON 存储（data/store.json）
 ```
 
-前端是**一个主菜单 + 九个详情页**。每个详情页恰好加载 `common.js` 加**它自己那一个**
+前端是**一个主菜单 + 九个详情页**。每个详情页恰好加载 `/common.js` 加**它自己那一个**
 模块 —— 页面与脚本一一对应，互不引用：
 
 ```
@@ -336,7 +336,7 @@ admin-roster.js    维修班组：师傅名册 · 工种 · 持证 · 可承接�
 ```
 
 拆分时真正跨页复用的只有**纯函数**：`priLabel` / `pairsText` / `stars` / `row` /
-`collegeOptionsHtml` / `blockOptionsHtml` 之类提到 `common.js`，而不是把「查优先级名字」
+`collegeOptionsHtml` / `blockOptionsHtml` 之类提到 `web/js/common.js`，而不是把「查优先级名字」
 抄进九个文件里任其漂移。状态与事件处理**不共享** —— 那正是每个页面只做一件事的原因。
 
 两个刻意的结构后果：
@@ -536,7 +536,7 @@ RAG 语料 = `config.py` 中的三张表（报修类型 + 书院 + 路程规则�
 
 | 层 | 做法 |
 | --- | --- |
-| 前端文案 | `common.js` 的 `I18N` 表（中英各约 180 条），`data-i18n` 属性驱动；两个页面共用同一份 |
+| 前端文案 | `web/js/common.js` 的 `I18N` 表（中英各约 180 条），`data-i18n` 属性驱动；两个页面共用同一份 |
 | 切换语言 | 写 `localStorage`，`DC.afterLang()` 注册的角色重绘钩子同时刷新 |
 | 服务端错误 | 返回稳定的 `code`（如 `bad_college`），前端按 code 本地化 |
 | AI 提示词 | **按语言分两套完整提示词**，而非在一段提示词里要求「请说英文」 |
@@ -545,7 +545,7 @@ RAG 语料 = `config.py` 中的三张表（报修类型 + 书院 + 路程规则�
 
 > 为什么提示词要分两套：把「请用英文」这条指令埋在一大段中文提示词里，
 > 模型经常无视；而提示词本身就是目标语言时，模型会稳定遵守。
-> 这一点在测试中被实测确认（见 `edge_cases.py`）。
+> 这一点在测试中被实测确认（见 `tests/edge_cases.py`）。
 
 ---
 
@@ -572,8 +572,8 @@ RAG 语料 = `config.py` 中的三张表（报修类型 + 书院 + 路程规则�
 - 学生只能看到**自己**的工单、姓名与联系方式；师傅的分机号只发给师傅角色
 
 > 一句话：**「看不到」不是前端把按钮藏起来，而是服务端不给数据。**
-> 权限边界由 `test_auth.py` 用 74 项攻击式断言逐条盯着（见下）。
-> 引入主菜单之后，「菜单不是绕过权限的后门」由 `test_account.py` 单独盯着：
+> 权限边界由 `tests/test_auth.py` 用 74 项攻击式断言逐条盯着（见下）。
+> 引入主菜单之后，「菜单不是绕过权限的后门」由 `tests/test_account.py` 单独盯着：
 > 三个角色各自能打开菜单，但任何角色从地址栏进别人的控制台仍然被重定向。
 
 ---
@@ -581,22 +581,24 @@ RAG 语料 = `config.py` 中的三张表（报修类型 + 书院 + 路程规则�
 ## 测试 / Tests
 
 ```bash
-python test_auth.py      # 权限边界 + 地址归属：74 项攻击式断言（无需密钥，自己起服务）
-python test_admin.py     # 管理员端：角色边界 + 账号台 + 工单增删改/指派/状态/审计/并发/幂等
-python test_account.py   # 主菜单 + 自助账号：127 项（11 页归属矩阵 + 菜单不放宽权限 + 改宿舍 + 改密码）
-python smoke_test.py     # 接口 + 规则不变量 + 90 条页面放行（含 6 个已删页面的 404）
-node   dom_smoke.js      # 前端真实 DOM 行为：435 项（登录页 + 主菜单×3角色 + 9 个详情页）
-python edge_cases.py     # 双语 AI 质量 + 无密钥降级 + 边界情况
-python rule_trace.py     # 逐分钟排班轨迹 + 模型路径验证
-python test_twopass.py   # 两遍排班：Pass 2 回收验证 + 不变量复核
-python verify_live.py    # 对运行中的服务校验真实排班（需先跑 serve.py）
+python tests/test_auth.py          # 权限边界 + 地址归属
+python tests/test_admin.py         # 管理员端
+python tests/test_account.py       # 主菜单 + 自助账号
+python tests/test_multimodal.py    # 上传、完工凭证、AI 受理
+python tests/smoke_test.py         # 接口 + 规则不变量 + 页面放行
+node tests/dom_smoke.js            # 前端 DOM 行为（需本地服务运行）
+python tests/edge_cases.py         # 双语 AI、降级与边界情况
+python tests/test_twopass.py       # 两遍排班与不变量复核
+python scripts/rule_trace.py       # 逐分钟排班轨迹 + 模型路径验证
+python scripts/serve.py            # 启动并灌入本地演示数据
+python scripts/verify_live.py      # 校验运行中的本地排班
 ```
 
 > 每个测试脚本都通过 `DORMCARE_DATA` 用**自己的数据文件**（`data/test-*.json`），
 > 跑完互不干扰。以前它们共用 `data/store.json`：一个脚本留下的工单会被下一个看见，
 > 表现为"随机"失败。要指到别处：`DORMCARE_DATA=/tmp/x.json python app.py`。
 
-`test_auth.py` 是这次改动的主要证据，它按**攻击**写而不是按流程写：
+`tests/test_auth.py` 是这次改动的主要证据，它按**攻击**写而不是按流程写：
 
 | 组 | 断言 |
 | --- | --- |
@@ -612,7 +614,7 @@ python verify_live.py    # 对运行中的服务校验真实排班（需先跑 s
 | 会话 | 退出登录后**重放旧令牌** → `401`（吊销是服务端行为） |
 | 限流 | 同一账号连错 10 次后 `429`，而**其他账号不受影响** |
 
-`test_admin.py` 用同一套「攻击式」写法盯住第三个角色：
+`tests/test_admin.py` 用同一套「攻击式」写法盯住第三个角色：
 
 | 组 | 断言 |
 | --- | --- |
@@ -626,7 +628,7 @@ python verify_live.py    # 对运行中的服务校验真实排班（需先跑 s
 | 工单管理 | 管理员代学生创建后学生可见；编辑快照字段；手动指派后仅对应师傅可见；四状态时间字段与回退清理；无图完工默认拒绝、带原因应急覆盖成功；旧版本冲突；创建幂等；非法 owner/worker/字段拒绝 |
 | 审计 / 删单 | 创建、更新、应急覆盖和删除写元数据审计；不记录描述正文/手机号/图片；管理员可删任意一张并确实从看板消失；不存在 → `404` |
 
-`test_account.py` 盯的是主菜单与自助账号，重点在**「去掉门槛」不等于「去掉边界」**：
+`tests/test_account.py` 盯的是主菜单与自助账号，重点在**「去掉门槛」不等于「去掉边界」**：
 
 | 组 | 断言 |
 | --- | --- |
@@ -639,14 +641,14 @@ python verify_live.py    # 对运行中的服务校验真实排班（需先跑 s
 | **向后生效** | 改完宿舍后新工单落在新地址，**改之前已提交的工单仍保留旧地址** |
 | 改密码 | 当前密码错 `400`；弱口令 `400`；与旧密码相同 `400`；改成功后**当前会话仍可用**、**同账号的另一个会话被登出**、旧口令登不进来、新口令能登；三种角色都试一遍并各自改回原口令 |
 
-`smoke_test.py` 会对排班结果逐条校验不变量：固定工时是否与查表一致、
+`tests/smoke_test.py` 会对排班结果逐条校验不变量：固定工时是否与查表一致、
 路程是否为 5/15、是否跨越午休、是否落在学生声明的空闲时段内、
 优先级顺序是否单调、以及**同样输入是否得到完全相同的排班（确定性）**；
 另外验证工单生命周期两半（师傅接单 → 完工 → 由**提交人**评价 → 别人评价被拒）、
 `/api/workers` 对学生的响应里**没有分机号**，以及 25 条页面/脚本的角色放行矩阵（含主菜单）；
 AI 受理必须**要么带回自检建议、要么带回追问**，且响应里**不得出现 `duration_minutes`**。
 
-`edge_cases.py` 的 PART C 专门盯「排不进当天」这条闭环，用的是真正排不进去的单
+`tests/edge_cases.py` 的 PART C 专门盯「排不进当天」这条闭环，用的是真正排不进去的单
 （50 分钟的床架维修，学生只留了一个 30 分钟时段）：
 匿名 / 学生 / 非本人师傅一律拒绝 → 师傅**顺路去修**后工单**仍然不在**优化时间轴上
 （引擎没排它，画上去就是假的）但学生端能看到「会顺路处理」→ 另一单走**建议改约**，
@@ -655,7 +657,7 @@ AI 受理必须**要么带回自检建议、要么带回追问**，且响应里*
 另外它会扫过全部 17 个类别的自检建议，**任何把学生往 220V 电路、燃气、拆解设备或
 登高上引**的步骤都会让测试失败。
 
-`dom_smoke.js` 用一个精简的 DOM 垫片在 Node 里加载 `common.js` 与各页面自己的模块，
+`tests/dom_smoke.js` 用一个精简的 DOM 垫片在 Node 里加载 `web/js/common.js` 与各页面自己的模块，
 带着**真实的会话 Cookie** 打到运行中的服务上，覆盖 435 项前端行为：
 匿名被送去登录页、**11 个页面按属主放行的全矩阵**（属主 `200`，其余角色 `303` 回菜单，
 匿名 `303` 去登录）、**6 个已删除的合并页面一律 `404`**、
@@ -692,7 +694,7 @@ RESULT: ALL GOOD  (6 of 9 tickets scheduled)             (test_twopass.py)
 rule violations: 0                                       (verify_live.py)
 ```
 
-> 所有测试共用一个 `testclient.py`：带 Cookie 的会话客户端。
+> 所有测试共用 `tests/testclient.py`：带 Cookie 的会话客户端。
 > 顺带一提，它把服务端日志写到**文件**而不是管道 —— 用管道时服务端每请求写一行日志，
 > 管道缓冲区一满（Windows 上 4KB）服务端就会阻塞在 `write` 上，
 > 后续请求全部超时且没有任何提示。
@@ -707,37 +709,18 @@ dormcare/
 ├── auth.py           账号 / 口令哈希（PBKDF2）/ 会话令牌 / 三个角色常量 / 统一落点 MENU_PATH / 账号宿舍
 ├── config.py         固定知识库：17 类报修工时 / 8 个书院+楼栋 / 路程规则 / RAG 语料
 │                     （含占位楼栋识别与 normalize_block 校验）
-├── scheduler.py      确定性派单 assign_day() + 两遍排班引擎（纯算术）
-├── ai_agents.py      4 个 RAG 智能体 + 双语提示词 + 关键词兜底
-├── store.py          JSON 存储（tickets/workers/users/sessions，原子写入 + 线程锁）
-│
-├── login.html/js     🔐 登录 + 学生注册（两个并列面板）
-├── menu.html/js      🏠 主菜单（三角色共用；登录后的统一落点，按角色列卡片）
-├── report.html       🎓 我要报修（学生）
-├── records.html      🎓 我的报修记录（学生）
-├── account.html      🔑 账号设置（三角色共用；宿舍区块仅学生可见）
-├── plan.html         🛠️ 排班与派活（师傅）
-├── jobs.html         🛠️ 我的工单（师傅）
-├── overview.html     🧭 运行总览（管理员）
-├── tickets.html      🧭 全部工单（管理员）
-├── users.html        🧭 账号管理（管理员）
-├── roster.html       🧭 维修班组（管理员）
-│                     每个详情页 = 一个 <page>.html + 一个同名 .js，彼此不引用
-├── common.js         全部页面共享：i18n 全量表 / Markdown / 请求 / 会话身份 / 密钥面板 /
-│                     「☰ 主菜单」按钮 / 跨页复用的纯函数
-├── styles.css        样式（身份栏、并列登录面板、主菜单卡片、账号设置、星级反馈、可折叠卡片、未排入面板、改约确认、管理台）
-│
-├── serve.py          启动服务 + 登录 + 灌入演示数据（一个账号一间房，其中一单故意排不下）
-├── testclient.py     带 Cookie 的测试客户端 + 安全的服务启动器 + Demo（按房间取会话）/ Admin（运维台）
-├── test_auth.py      权限边界 + 地址归属测试（74 项）
-├── test_admin.py     管理员端测试（角色互斥 + 账号台 + 工单管理 + 审计/并发/幂等）
-├── test_account.py   主菜单 + 自助账号测试（72 项：菜单不放宽权限 / 改宿舍向后生效 / 改密码吊销会话）
-├── smoke_test.py     接口、规则不变量与页面角色放行测试
-├── dom_smoke.js      前端真实 DOM 行为测试（196 项，无需浏览器；含三角色各跑一次主菜单）
-├── edge_cases.py     边缘情况、AI 追问/自检、无密钥降级、排不进当天的完整闭环
-├── rule_trace.py     排班轨迹追踪
-├── test_twopass.py   两遍排班回收验证
-├── verify_live.py    对运行中服务的排班校验
+├── scheduler.py      确定性派单 + 两遍排班引擎（纯算术）
+├── ai_agents.py / intake_agent.py / agent_*.py
+│                     AI 受理、提示词与工具
+├── store.py / upload_service.py
+│                     JSON 存储与私有上传
+├── web/
+│   ├── pages/        11 个 HTML 页面（公网 URL 保持根路径不变）
+│   ├── js/           共享及各角色页面脚本
+│   └── css/          styles.css
+├── tests/            Python 测试、testclient.py 与 dom_smoke.js
+├── scripts/          serve.py、verify_live.py、rule_trace.py
+├── docs/             设计文档
 └── data/store.json   数据：工单 / 师傅 / 账号 / 会话（首次运行自动创建）
 ```
 
@@ -840,9 +823,9 @@ base64 解码后大小和 PNG/JPEG magic bytes，客户端 MIME 声明不能绕�
 
 ```bash
 python -m py_compile app.py store.py upload_service.py agent_prompts.py agent_tools.py intake_agent.py
-python test_auth.py
-python smoke_test.py
-python test_multimodal.py
+python tests/test_auth.py
+python tests/smoke_test.py
+python tests/test_multimodal.py
 ```
 
 ---
@@ -874,5 +857,5 @@ TRAVEL_RULES = {
 口令最低长度 `auth.MIN_PASSWORD`，登录失败预算 `app.AUTH_MAX_FAILURES`。
 
 > 想改「有哪些角色」只改三处：`auth.py` 的角色常量与 `HOME_BY_ROLE`、
-> `app.py` 的 `STATIC_FILES`（哪个页面属于谁）、`common.js` 的 `HOME` 与 `roleLabel`。
+> `app.py` 的 `STATIC_FILES`（哪个页面属于谁）、`web/js/common.js` 的 `HOME` 与 `roleLabel`。
 > 少改任何一处，页面级隔离就会出现一条缝。

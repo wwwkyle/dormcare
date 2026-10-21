@@ -1,15 +1,18 @@
 """Verify the live seeded plan against every stated rule, and explain each
 unscheduled ticket in terms of the student's declared window.
 
-Runs against the server on port 3000 (the one `serve.py` starts) and signs in
+Runs against the server on port 3000 (the one `scripts/serve.py` starts) and signs in
 as a technician, because /api/plan now reports the day of whoever is asking.
 Override the identity with DC_USER / DC_PASSWORD if you like:
 
-    DC_USER=B02 DC_PASSWORD=fix2026 python verify_live.py
+    DC_USER=B02 DC_PASSWORD=fix2026 python scripts/verify_live.py
 """
 import os
 import sys
+from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "tests"))
 from testclient import Client
 
 BASE = os.environ.get("DC_BASE", "http://127.0.0.1:3000")

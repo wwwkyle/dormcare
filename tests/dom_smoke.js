@@ -312,6 +312,7 @@ function buildPage(html) {
     // A boolean `hidden` attribute must be honoured, or a panel the markup
     // keeps closed would read as open and the check would be blind to it.
     if (/(?:^|\s)hidden(?:\s|=|$)/.test(attrs)) n.hidden = true;
+    if (/(?:^|\s)open(?:\s|=|$)/.test(attrs)) n.open = true;
     registerTree(n);
   }
   // Containers the JS writes into that the markup declares EMPTY — `<div
@@ -966,6 +967,9 @@ async function runLogin() {
     lp.hidden === false && rp.hidden === true &&
       loginTab.getAttribute("aria-selected") === "true");
 
+  const demoFold = document.getElementById("demoFold");
+  check("demo accounts are visible every time the page loads",
+    !!demoFold && demoFold.open === true, "open=" + (demoFold && demoFold.open));
   const demo = document.getElementById("demoBody");
   check("the demo table lists all three roles",
     demo.querySelectorAll("tr").length === 4, "rows=" + demo.querySelectorAll("tr").length);

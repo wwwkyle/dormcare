@@ -1205,13 +1205,33 @@ class Handler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _agent_session_view(session):
-        return {k: session.get(k) for k in (
+        view = {k: session.get(k) for k in (
             "id", "created_at", "updated_at", "history", "image_ids",
             "draft", "ready", "stage", "detected", "missing", "self_help",
             "safety_warning", "resolved", "ticket_id", "route_options",
             "emergency", "confidence", "kb_status", "solution",
             "next_question", "question_options", "state", "response_mode",
             "active_route", "agent_status")}
+        # Legacy sessions may contain the removed human-handoff state/option.
+        routes = [
+            item for item in (view.get("route_options") or [])
+            if isinstance(item, dict) and item.get("id") in ("self_help", "smart_repair")
+        ]
+        if view.get("state") == "human_handoff" or view.get("stage") == "human_handoff":
+            view.update({
+                "state": "route_choice", "stage": "route_choice",
+                "active_route": "", "agent_status": "ai", "ready": False,
+                "next_question": None, "question_options": [], "missing": [],
+            })
+            routes = []
+        if view.get("state") == "route_choice" or not routes:
+            routes = [
+                {"id": "self_help", "enabled": True, "recommended": False},
+                {"id": "smart_repair", "enabled": True,
+                 "recommended": bool(view.get("emergency"))},
+            ]
+        view["route_options"] = routes
+        return view
 
     # ---- POST ------------------------------------------------------------- #
 
@@ -1652,23 +1672,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         action = body.get("action") or ""
         allowed_actions = ("", "resolved", "create_draft", "self_help",
-                           "smart_repair", "manual", "human", "save_draft")
+                           "smart_repair", "manual", "save_draft")
         if action not in allowed_actions:
             self._err(400, "bad_agent_action", "Unsupported intake action.")
-            return
-        if action == "human":
-            reply = ("已记录转人工请求。当前未接入在线客服，请立即联系宿管或物业值班电话；你的草稿会保留。"
-                     if session.get("lang") == "zh" else
-                     "Human help was requested. Live chat is not connected; contact the residence or property duty line. Your draft is saved.")
-            session = STORE.update_agent_session(session["id"], {
-                "stage": "human_handoff", "state": "human_handoff",
-                "agent_status": "human_requested",
-            })
-            STORE.add_agent_event({"session_id": session["id"],
-                                   "event": "human_requested",
-                                   "state": "human_handoff"})
-            self._json(200, {"ok": True, "reply": reply,
-                             **self._agent_session_view(session)})
             return
         if action == "manual":
             session = STORE.update_agent_session(session["id"], {
@@ -1720,11 +1726,8 @@ class Handler(BaseHTTPRequestHandler):
         if session.get("resolved"):
             self._err(409, "session_resolved", "This intake session is closed.")
             return
-        if action == "self_help" and session.get("emergency"):
-            self._err(409, "emergency_requires_report",
-                      "Emergency cases must use immediate repair reporting.")
-            return
         force_draft = action in ("create_draft", "smart_repair")
+        first_turn = not (session.get("history") or []) and not action
         text = (body.get("text") or "").strip()[:2000]
         selected = body.get("option")
         if selected is not None:
@@ -1769,6 +1772,41 @@ class Handler(BaseHTTPRequestHandler):
         result = intake_agent.respond(self.api_key, self.model, session, user,
                                       session.get("lang", "zh"), STORE, UPLOAD_DIR,
                                       force_draft=force_draft)
+        if first_turn:
+            result.update({
+                "reply": ("已完成初步识别。请选择“提供维修建议”或“生成工单”。"
+                          if session.get("lang") == "zh" else
+                          "Initial recognition is complete. Choose repair advice or create a ticket."),
+                "stage": "route_choice", "state": "route_choice",
+                "complete": False, "missing": [], "next_question": None,
+                "question_options": [], "self_help": [], "solution": None,
+                "route_options": [
+                    {"id": "self_help", "enabled": True, "recommended": False},
+                    {"id": "smart_repair", "enabled": True,
+                     "recommended": bool(result.get("emergency"))},
+                ],
+                "active_route": "",
+            })
+        elif action == "self_help" and result.get("emergency"):
+            tips = ([
+                "立即停止使用并远离故障点；不要触碰、拆卸或尝试维修。",
+                "在确保自身安全的前提下关闭电源或阀门；如有烟火、燃气味或人员危险，立即撤离。",
+                "立即联系校园保卫、宿管或物业紧急人员，并可随时生成工单。",
+            ] if session.get("lang") == "zh" else [
+                "Stop using the area, keep away, and do not touch, open, or repair it.",
+                "Only if safe, cut power or close the valve; evacuate for smoke, gas, fire, or danger to people.",
+                "Contact campus security, residence staff, or emergency property staff now; you can still create a ticket.",
+            ])
+            result.update({
+                "reply": tips[0], "stage": "advice", "state": "advice",
+                "complete": False, "ready": False, "self_help": tips,
+                "solution": {"source": "safety_fallback",
+                             "safety_reviewed": True,
+                             "steps": [{"text": tip, "image_url": None}
+                                       for tip in tips]},
+                "missing": [], "next_question": None, "question_options": [],
+                "active_route": "self_help",
+            })
         if action == "self_help" and result.get("stage") != "advice":
             result.update({
                 "reply": ("知识库当前为空，暂无合适方案。你可以直接生成工单，识别结果和图片都会保留。"
@@ -1783,6 +1821,8 @@ class Handler(BaseHTTPRequestHandler):
             merged = dict(result["draft"])
             merged.update(session["draft"])
             merged["image_ids"] = list(session.get("image_ids") or [])
+            if result.get("emergency"):
+                merged["priority"] = "urgent"
             result["draft"] = merged
         history = list(session.get("history") or [])
         history.append({"role": "assistant", "content": result.get("reply", "")})
@@ -1879,7 +1919,7 @@ class Handler(BaseHTTPRequestHandler):
         allowed = ("intake_started", "route_selected", "question_answered",
                    "draft_saved", "draft_restored", "confirm_started",
                    "confirm_succeeded", "network_error", "upload_failed",
-                   "human_requested", "resolved_without_ticket")
+                   "resolved_without_ticket")
         if event not in allowed:
             self._err(400, "bad_event", "Unsupported event.")
             return

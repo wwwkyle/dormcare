@@ -12,13 +12,12 @@ flowchart TD
   U -- 否 --> UF[保留文字与成功图片\n重试或继续] --> C
   U -- 是 --> C[规则+多模态模型识别]
   C -->|模型失败| R[规则兜底]
-  C -->|无法识别| Q[一次追问一个最高优先字段]
+  C --> S{首轮固定分流}
   R --> D{紧急?}
-  Q --> C
   C --> D
-  D -- 漏水/漏电/燃气/火灾/被困 --> E[安全警示+立即报修\n禁用自助] --> B
-  D -- 普通 --> S{选择路径}
-  S -->|A 自助| K{知识库命中?}
+  D -- 漏水/漏电/燃气/火灾/被困 --> E[安全警示\nB推荐且A保留] --> S
+  D -- 普通 --> S
+  S -->|A 提供维修建议| K{知识库命中?}
   K -- 命中 --> P[步骤方案/可选配图]
   K -- 空库或无命中 --> X[暂无合适方案] --> B
   K -- 安全规则 fallback --> F[明确标注 fallback 步骤]
@@ -26,7 +25,7 @@ flowchart TD
   F --> Z
   Z -- 已解决 --> DONE[结束且不建单]
   Z -- 未解决 --> B[智能报修]
-  S -->|B 智能报修| B
+  S -->|B 生成工单| B
   B --> Q2[单问题+优先可点选项\n每轮服务端存草稿]
   Q2 -->|仍缺字段| Q2
   Q2 -->|切 A| K
@@ -39,16 +38,13 @@ flowchart TD
   IDEM -- 否 --> T[创建一张工单]
   IDEM -- 是 --> SAME[返回原工单]
   PRE -->|未确认| B
-  C --> H[转人工]
-  B --> H
-  H --> HP[记录 human_requested\n提示物业联系方式\n不伪称在线客服]
 ```
 
 ## 优先级与 MVP
 
-- **P0 / MVP（本次实现）**：统一文字/语音/多图；紧急强制报修；规则兜底；明确 `kb_status=empty` 与安全 fallback；A/B 路径；单问题选项；服务端草稿、刷新恢复、手写带入；确认前不建单；确认幂等；跨账号与图片归属校验；断网/上传/登录过期提示；转人工占位状态；中英双语；隐私最小化事件。
+- **P0 / MVP（本次实现）**：统一文字/语音/多图；首轮固定且仅显示“提供维修建议/生成工单”并且不追问；紧急先警示、B 推荐、A 仅给断电/关阀/撤离/联系紧急人员；规则兜底；单问题选项；服务端草稿、刷新恢复、手写带入；确认幂等；跨账号与图片归属校验；中英双语；隐私最小化事件。
 - **P1**：接入审核后的真实知识库/向量检索；物业值班系统；管理员漏斗聚合；SSE 分块传输（当前 `response_mode=complete`，状态机已预留）。
-- **P2**：方案图片内容管理、跨轮视觉定位、人工接管对话、A/B 实验与个性化排序。均不影响 MVP 建单闭环。
+- **P2**：方案图片内容管理、跨轮视觉定位、A/B 实验与个性化排序。均不影响 MVP 建单闭环。
 
 ## 页面线框与状态
 
@@ -56,14 +52,14 @@ flowchart TD
 
 ```text
 ┌ AI 智能受理 ─ 描述>分流>草稿>确认 ┐
-│ [紧急] 红色安全警示 + [立即报修]    │
+│ [紧急] 红色安全警示（B 为推荐操作） │
 │ 对话记录 / 识别中骨架 / 网络错误重试 │
 │ 类别  紧急度  置信度  缺失字段       │
-│ [选项1] [选项2] [A自助] [B报修]      │
+│ 首轮仅 [A提供维修建议] [B生成工单]    │
 │ [文字…………] [语音] [拍照/相册] [发送]│
-│ [转人工] [改为手写]                   │
+│ [改为手写]                            │
 └ 空:输入示例 加载:发送禁用 错:可重试   ┘
-成功:分流可选；紧急:自助隐藏。
+成功:分流可选；紧急:A/B 均显示，B 为主操作。
 ```
 
 ### 自助方案页
@@ -76,7 +72,7 @@ flowchart TD
 │ 2 [可选图] 步骤                       │
 │ 问题解决了吗? [已解决] [未解决报修]   │
 └ 加载/错误不阻断 [生成工单]            ┘
-成功:无工单结束；紧急:本页不可进入。
+成功:无工单结束；紧急仅给断电/关阀/撤离/联系紧急人员等保守建议。
 ```
 
 ### 草稿 / 手写页
@@ -105,11 +101,10 @@ flowchart TD
 
 ## 短话术（每轮不超过 3 句）
 
-- 普通：“我识别为网络故障，紧急度普通，置信度中。你可以先看安全建议，或直接生成报修草稿。”
-- 紧急：“这可能涉及漏电，请远离故障点且不要触碰或拆修。请立即联系校园保卫/物业，并点击‘立即报修’。”
+- 普通：“已完成初步识别。请选择‘提供维修建议’或‘生成工单’。”
+- 紧急：“这可能涉及漏电，请远离故障点且不要触碰或拆修。请选择‘提供维修建议’或推荐的‘生成工单’；必要时立即联系校园保卫/物业紧急人员。”
 - 追问：“还差一个关键信息：故障是完全不能用、时好时坏，还是有漏水/异响？请选择最接近的一项。”
 - 无方案：“知识库当前为空，暂无合适方案。你可以直接生成工单，刚才的识别和图片都会保留。”
-- 转人工：“已记录转人工请求。当前未接入在线客服，请联系宿管或物业值班电话；草稿已保留。”
 
 English follows the same two-sentence structure: identify/ask first, action and safety second; never promise arrival time or decide charges/liability.
 
@@ -117,19 +112,18 @@ English follows the same two-sentence structure: identify/ask first, action and 
 
 - `UnifiedComposer`：文本、Web Speech transcript、多图上传；单消息提交。
 - `RecognitionCard`：`detected/confidence/missing/emergency`。
-- `RouteChooser`：`self_help | smart_repair`；紧急只开放后者。
+- `RouteChooser`：首轮严格为 `self_help | smart_repair`；紧急两者均开放，后者推荐。
 - `QuestionTurn`：仅一个 `next_question`，`question_options` 由服务端白名单验证。
 - `SolutionSteps`：`solution.steps[{text,image_url?}]`，显示 `kb_status/source`。
-- `DraftEditor` / `TicketPreview` / `HumanHandoffNotice`。
+- `DraftEditor` / `TicketPreview`。
 
 状态机：
 
 ```text
-describe -> recognizing -> clarify -> route
+describe -> recognizing -> route_choice
 route -> self_help -> resolved | smart_repair
 route -> smart_repair -> clarify | draft
 任意非终态 <-> manual
-任意非终态 -> human_handoff（草稿保留）
 draft -> preview -> confirming -> ticket_created
 confirming -> preview(error) | ticket_created(idempotent)
 任意请求 -> offline/upload_error/auth_expired；恢复后回原状态
@@ -155,10 +149,10 @@ confirming -> preview(error) | ticket_created(idempotent)
 
 ```json
 {
-  "contract_version":2,"state":"follow_up","response_mode":"complete",
+  "contract_version":2,"state":"route_choice","response_mode":"complete",
   "detected":{"repair_type":"power","priority":"urgent"},
   "confidence":"high","emergency":true,
-  "route_options":[{"id":"smart_repair","enabled":true,"recommended":true}],
+  "route_options":[{"id":"self_help","enabled":true,"recommended":false},{"id":"smart_repair","enabled":true,"recommended":true}],
   "kb_status":"empty","solution":null,
   "next_question":null,"question_options":[],
   "draft":{"repair_type":"power","priority":"urgent","description":"…","image_ids":["F…"]}
@@ -190,7 +184,7 @@ confirming -> preview(error) | ticket_created(idempotent)
 ## 边界与安全
 
 - 模型超时、非 JSON、字段非法：最多重试后规则兜底；不把 API key、故障全文或图片写日志。
-- 紧急词优先于模型结论，自助接口也返回 `emergency_requires_report`。
+- 紧急词优先于模型结论；建议分支只返回断电、关阀、撤离和联系紧急人员等保守步骤。
 - 图片必须属于当前账号、未绑定其他工单且用途合法；session、草稿、确认均校验账号。
 - 上传部分失败保留文本与成功项；断网不清输入；401 走统一登录过期处理。
 - 前端发送与确认期间禁用按钮；服务端 ticket id 是最终幂等依据。
@@ -199,7 +193,7 @@ confirming -> preview(error) | ticket_created(idempotent)
 
 ## 埋点与指标
 
-事件仅记录 session id、事件名、state、route、emergency、lang、时间；不记录描述、图片、手机号或房间全文。P0 事件：`intake_started/route_selected/question_answered/draft_saved/draft_restored/confirm_started/confirm_succeeded/network_error/upload_failed/human_requested/resolved_without_ticket`。
+事件仅记录 session id、事件名、state、route、emergency、lang、时间；不记录描述、图片、手机号或房间全文。P0 事件：`intake_started/route_selected/question_answered/draft_saved/draft_restored/confirm_started/confirm_succeeded/network_error/upload_failed/resolved_without_ticket`。
 
 - 分流完成率 = 进入 `route` 的 session / `intake_started`。
 - 自助解决率 = `resolved_without_ticket` / 选择 self_help。

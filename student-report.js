@@ -282,10 +282,9 @@
     }).join("");
     var routes = data.route_options || [];
     $("routeActions").hidden = !routes.length;
-    $("routeSelfHelp").hidden = !!data.emergency ||
+    $("routeSelfHelp").hidden =
       !routes.some(function (x) { return x.id === "self_help" && x.enabled; });
-    $("routeRepair").textContent = data.emergency ? t("emergencyRepair") : t("routeRepair");
-    $("emergencyRepair").hidden = !data.emergency;
+    $("routeRepair").textContent = t("routeRepair");
     var tips = data.self_help || [];
     $("agentAdvice").hidden = data.stage !== "advice";
     $("selfHelpList").innerHTML = tips.map(function (x) {
@@ -349,7 +348,7 @@
     if (!agentSessionId) return;
     var button = action === "resolved" ? $("agentResolved") :
       (action === "self_help" ? $("routeSelfHelp") :
-       (action === "human" ? $("humanHelp") : $("routeRepair")));
+       $("routeRepair"));
     DC.busy(button, true);
     DC.post("/api/agent/message", {
       id: agentSessionId, action: action,
@@ -589,8 +588,6 @@
     $("agentNeedRepair").addEventListener("click", function () { agentAction("create_draft"); });
     $("routeSelfHelp").addEventListener("click", function () { agentAction("self_help"); });
     $("routeRepair").addEventListener("click", function () { agentAction("smart_repair"); });
-    $("emergencyRepair").addEventListener("click", function () { agentAction("smart_repair"); });
-    $("humanHelp").addEventListener("click", function () { agentAction("human"); });
     $("questionOptions").addEventListener("click", function (e) {
       var b = e.target.closest("[data-question-option]");
       if (!b || !agentSessionId) return;
@@ -632,7 +629,6 @@
       $("agentAdvice").hidden = true;
       $("routeActions").hidden = true;
       $("questionOptions").hidden = true;
-      $("emergencyRepair").hidden = true;
       $("agentDraft").hidden = true;
       $("agentConfirm").hidden = true;
       $("submitBtn").hidden = false;

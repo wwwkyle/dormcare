@@ -89,10 +89,12 @@ def main():
         s, first = stu.call("/api/agent/message", {"id": aid, "text": "插座坏了"})
         ok("ordinary routing exposes stable v2 fields",
            s == 200 and first["contract_version"] == 2 and
-           len(first["route_options"]) == 2 and first["response_mode"] == "complete")
-        ok("agent asks exactly one question with options",
-           not first["ready"] and len(first["missing"]) == 1 and
-           first["next_question"] and first["question_options"])
+           [x["id"] for x in first["route_options"]] ==
+           ["self_help", "smart_repair"] and
+           first["state"] == "route_choice" and first["response_mode"] == "complete")
+        ok("first turn never asks a follow-up",
+           not first["ready"] and not first["missing"] and
+           first["next_question"] is None and not first["question_options"])
         s, bad_option = stu.call("/api/agent/message", {
             "id": aid, "option": "invented"})
         ok("server rejects invented question option",
@@ -105,17 +107,12 @@ def main():
         ok("cross-account agent image rejected",
            s == 403 and forbidden_image.get("code") == "forbidden")
         s, second = stu.call("/api/agent/message", {
-            "id": aid, "text": "A-301书桌旁插座冒火花，从今天上午开始，已停止使用",
+            "id": aid, "action": "smart_repair",
+            "text": "A-301书桌旁插座冒火花，从今天上午开始，已停止使用",
             "image_ids": [agent_image_id]})
         ok("agent produces urgent draft", s == 200 and second["ready"] and
            second["draft"]["priority"] == "urgent" and second["safety_warning"])
-        ok("emergency forces smart repair route",
-           second["emergency"] and
-           [x["id"] for x in second["route_options"]] == ["smart_repair"])
-        s, blocked_self_help = stu.call("/api/agent/message", {
-            "id": aid, "action": "self_help"})
-        ok("emergency self-help is blocked",
-           s == 409 and blocked_self_help.get("code") == "emergency_requires_report")
+        ok("ticket choice enters ticket flow", second["emergency"])
         ok("agent image retained in draft",
            second["draft"]["image_ids"] == [agent_image_id])
         session_view = stu.call("/api/agent/session?id=" + aid)[1]["session"]
@@ -142,9 +139,13 @@ def main():
         s, advice = stu.call("/api/agent/message", {
             "id": advice_id,
             "text": "宿舍网络突然断线，路由器状态正常，重新插过网线仍无法使用"})
-        ok("safe low-risk issue returns advice branch",
-           s == 200 and advice["stage"] == "advice" and
-           advice["self_help"] and not advice["ready"])
+        ok("safe issue first returns exactly two routes",
+           s == 200 and advice["state"] == "route_choice" and
+           len(advice["route_options"]) == 2 and advice["next_question"] is None)
+        s, advice = stu.call("/api/agent/message", {
+            "id": advice_id, "action": "self_help"})
+        ok("advice starts only after A is selected",
+           s == 200 and advice["stage"] == "advice" and advice["self_help"])
         ok("empty KB never masquerades as a hit",
            advice["kb_status"] == "empty" and
            advice["solution"]["source"] == "fallback" and
@@ -199,13 +200,37 @@ def main():
         ok("route switching preserves edited draft fields",
            s == 200 and back_to_repair["draft"]["title"] == "椅子下沉（手写）")
 
+        s, emergency_session = stu.call("/api/agent/session", {"lang": "zh"})
+        emergency_id = emergency_session["session"]["id"]
+        s, emergency = stu.call("/api/agent/message", {
+            "id": emergency_id, "text": "插座正在冒火花并有焦味"})
+        ok("emergency first turn keeps both routes and no question",
+           s == 200 and emergency["emergency"] and
+           [x["id"] for x in emergency["route_options"]] ==
+           ["self_help", "smart_repair"] and emergency["next_question"] is None and
+           emergency["route_options"][1]["recommended"])
+        s, safe_advice = stu.call("/api/agent/message", {
+            "id": emergency_id, "action": "self_help"})
+        ok("emergency A returns conservative safety advice",
+           s == 200 and safe_advice["stage"] == "advice" and
+           safe_advice["solution"]["source"] == "safety_fallback" and
+           "拆卸" in safe_advice["self_help"][0])
+
         s, human_session = stu.call("/api/agent/session", {"lang": "en"})
         human_id = human_session["session"]["id"]
         s, human = stu.call("/api/agent/message", {
             "id": human_id, "action": "human"})
-        ok("human handoff is explicit placeholder state",
-           s == 200 and human["agent_status"] == "human_requested" and
-           human["stage"] == "human_handoff" and "not connected" in human["reply"])
+        ok("removed human action is rejected",
+           s == 400 and human.get("code") == "bad_agent_action")
+        from app import Handler
+        legacy = Handler._agent_session_view({
+            "id": "legacy", "stage": "human_handoff", "state": "human_handoff",
+            "route_options": [{"id": "human", "enabled": True}],
+        })
+        ok("legacy human session normalizes to route choice",
+           legacy["state"] == "route_choice" and
+           [x["id"] for x in legacy["route_options"]] ==
+           ["self_help", "smart_repair"])
 
         s, fallback_session = stu.call("/api/agent/session", {"lang": "zh"})
         fallback_id = fallback_session["session"]["id"]

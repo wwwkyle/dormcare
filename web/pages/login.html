@@ -31,18 +31,19 @@
 
   <main class="stack">
 
-    <!-- 登录与注册是两个并列的独立面板，不再互相遮挡 / sign in and sign-up,
-         side by side rather than hidden behind a tab -->
-    <div class="auth-split">
+    <!-- 默认显示登录；学生主动选择注册后再切换到注册表单。 -->
+    <section class="card auth-card">
+      <div class="auth-tabs" id="authTabs" role="tablist" aria-label="登录或学生注册">
+        <button type="button" class="auth-tab active" id="loginTab" role="tab"
+                aria-selected="true" aria-controls="loginPane" data-view="login"
+                data-i18n="tabLogin">登录</button>
+        <button type="button" class="auth-tab" id="registerTab" role="tab"
+                aria-selected="false" aria-controls="registerPane" data-view="register"
+                data-i18n="tabRegister">学生注册</button>
+      </div>
 
       <!-- 登录 / sign in -->
-      <section class="card auth-pane">
-        <div class="card-head">
-          <h2><span aria-hidden="true">🔐</span>
-            <span id="loginPaneTitle" data-i18n="tabLogin">登录</span></h2>
-        </div>
-        <p class="hint" data-i18n="loginPaneHint"></p>
-
+      <div class="auth-pane" id="loginPane" role="tabpanel" aria-labelledby="loginTab">
         <form class="auth-form" id="loginForm" autocomplete="on">
           <label class="lbl" for="loginUser" data-i18n="lblAccount">账号</label>
           <input type="text" id="loginUser" name="username" maxlength="32" autocapitalize="off"
@@ -57,22 +58,17 @@
           </div>
           <p class="form-msg" id="loginMsg"></p>
         </form>
-      </section>
+      </div>
 
       <!-- 学生注册 / student sign-up -->
-      <section class="card auth-pane">
-        <div class="card-head">
-          <h2><span aria-hidden="true">📝</span>
-            <span id="registerPaneTitle" data-i18n="tabRegister">学生注册</span></h2>
-        </div>
-        <p class="hint" data-i18n="regHint"></p>
-
+      <div class="auth-pane" id="registerPane" role="tabpanel"
+           aria-labelledby="registerTab" hidden>
         <form class="auth-form" id="registerForm" autocomplete="on">
           <div class="grid2">
             <div>
               <label class="lbl" for="regUser" data-i18n="lblAccount">账号</label>
               <input type="text" id="regUser" maxlength="32" autocapitalize="off"
-                     autocomplete="off" spellcheck="false" data-i18n-ph="phAccount">
+                     autocomplete="off" spellcheck="false" data-i18n-ph="phStudentAccount">
             </div>
             <div>
               <label class="lbl" for="regName" data-i18n="lblRegName">姓名</label>
@@ -83,7 +79,7 @@
 
           <div class="grid2">
             <div>
-              <label class="lbl" for="regCollege" data-i18n="lblRegCollege">所属书院</label>
+              <label class="lbl" for="regCollege" data-i18n="lblRegCollege">书院</label>
               <select id="regCollege"></select>
             </div>
             <div>
@@ -98,11 +94,9 @@
                  data-i18n-ph="phDorm">
           <p class="blk-hint" data-i18n="regDormNote"></p>
 
-          <label class="lbl" for="regPhone" data-i18n="lblStudentPhone">注册手机号</label>
+          <label class="lbl" for="regPhone" data-i18n="lblStudentPhone">手机号</label>
           <input type="tel" id="regPhone" maxlength="40" autocomplete="tel"
-                 inputmode="tel" data-i18n-ph="phStudentPhone"
-                 aria-describedby="regPhoneHelp">
-          <p class="blk-hint" id="regPhoneHelp" data-i18n="studentPhoneHelp"></p>
+                 inputmode="tel" data-i18n-ph="phStudentPhone">
 
           <div class="grid2">
             <div>
@@ -123,18 +117,17 @@
           </div>
           <p class="form-msg" id="registerMsg"></p>
         </form>
-      </section>
+      </div>
 
-    </div>
+    </section>
 
     <!-- 演示账号 / demo accounts -->
-    <details class="card fold" open>
+    <details class="card fold">
       <summary>
         <span aria-hidden="true">🧪</span>
         <span id="demoTitle" data-i18n="demoTitle">演示账号</span>
         <span class="chev" aria-hidden="true">▾</span>
       </summary>
-      <p class="hint" data-i18n="demoHint"></p>
       <table class="demo-table">
         <thead>
           <tr>

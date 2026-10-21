@@ -695,23 +695,29 @@
       refreshDraftImages();
     });
 
+    function setSpeechHint(key) {
+      var el = $("speechHint");
+      if (!el) return;
+      el.hidden = !key;
+      el.textContent = key ? t(key) : "";
+    }
     var Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Speech) {
       $("speechBtn").disabled = true;
-      $("speechHint").textContent = t("speechUnsupported");
+      setSpeechHint("speechUnsupported");
     } else {
       $("speechBtn").addEventListener("click", function () {
         var rec = new Speech();
         rec.lang = DC.lang === "zh" ? "zh-CN" : "en-US";
-        $("speechHint").textContent = t("speechListening");
+        setSpeechHint("speechListening");
         rec.onresult = function (event) {
           var text = event.results[0][0].transcript || "";
           $("intakeText").value = ($("intakeText").value.trim() + " " + text).trim();
           $("intakeText").focus();
-          $("speechHint").textContent = t("speechHint");
+          setSpeechHint("");
         };
-        rec.onerror = function () { $("speechHint").textContent = t("speechFailed"); };
-        try { rec.start(); } catch (e) { $("speechHint").textContent = t("speechFailed"); }
+        rec.onerror = function () { setSpeechHint("speechFailed"); };
+        try { rec.start(); } catch (e) { setSpeechHint("speechFailed"); }
       });
     }
 

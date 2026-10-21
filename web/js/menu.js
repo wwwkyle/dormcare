@@ -67,10 +67,6 @@
     }
     var hello = $("menuHello");
     if (hello) hello.textContent = fill(t("menuHello"), { name: DC.displayName(me) });
-    var hint = $("menuHint");
-    if (hint) {
-      hint.textContent = fill(t("menuRoleHint"), { role: DC.roleLabel(role) });
-    }
   }
 
   function renderCards() {

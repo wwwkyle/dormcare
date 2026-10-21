@@ -731,7 +731,7 @@ async function runRole(page, module, cookie, opts) {
         /data-act="offroute-suggest"/.test(un.innerHTML) &&
         /unsched-date/.test(un.innerHTML));
       check("off-route rows state why it did not fit",
-        /排不进|班次|空闲时段|full|outside|shorter/.test(un.innerHTML),
+        /排满|空闲时间|full|free time|shorter/.test(un.innerHTML),
         un.innerHTML.slice(0, 120));
       check("off-route rows carry the address and the contact",
         /东座|西座|宿舍 \d 栋|南区|北区|A 座|B 座|C 座|H-\d/.test(un.innerHTML));
@@ -923,9 +923,8 @@ async function runRole(page, module, cookie, opts) {
 
 /**
  * The sign-in page has its own module and no session, so it gets its own run.
- * What matters here is the layout decision: sign-in and student sign-up are two
- * panels shown at once, not two tabs — so both forms must be present AND
- * visible, and the tab strip must be gone.
+ * Sign-in is the default view. Student sign-up remains on the same page but is
+ * shown only after the visitor explicitly chooses its tab.
  */
 async function runLogin() {
   console.log("\n=== /login.html + login.js ===");
@@ -950,11 +949,22 @@ async function runLogin() {
   check("an anonymous visitor is not bounced off the sign-in page",
     !sandbox.__redirect, sandbox.__redirect || "");
 
-  check("the tab strip is gone", document.getElementById("authTabs") === null);
+  const loginTab = document.getElementById("loginTab");
+  const registerTab = document.getElementById("registerTab");
   const lf = document.getElementById("loginForm"), rf = document.getElementById("registerForm");
-  check("sign-in and student sign-up are two panels, both visible at once",
-    !!lf && !!rf && lf.hidden === false && rf.hidden === false,
-    "login.hidden=" + (lf && lf.hidden) + " register.hidden=" + (rf && rf.hidden));
+  const lp = document.getElementById("loginPane"), rp = document.getElementById("registerPane");
+  check("sign-in is the default and student sign-up starts hidden",
+    !!lf && !!rf && !!loginTab && !!registerTab &&
+      lp.hidden === false && rp.hidden === true,
+    "login.hidden=" + (lp && lp.hidden) + " register.hidden=" + (rp && rp.hidden));
+  registerTab.dispatch("click");
+  check("choosing student sign-up switches to the registration form",
+    lp.hidden === true && rp.hidden === false &&
+      registerTab.getAttribute("aria-selected") === "true");
+  loginTab.dispatch("click");
+  check("the visitor can switch back to sign-in",
+    lp.hidden === false && rp.hidden === true &&
+      loginTab.getAttribute("aria-selected") === "true");
 
   const demo = document.getElementById("demoBody");
   check("the demo table lists all three roles",

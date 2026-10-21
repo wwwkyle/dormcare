@@ -5,9 +5,8 @@
  * the SERVER (`home` in the login response), so the role can never be chosen
  * from the browser.
  *
- * Sign-in and student sign-up are two separate panels shown at the same time
- * rather than two tabs: nothing that a first-time visitor needs is hidden
- * behind a click.
+ * Sign-in is the default view. Student sign-up is available from the tab above
+ * the form, keeping the two tasks in one focused panel.
  *
  * Depends on common.js (window.DC) loaded first.
  */
@@ -57,8 +56,17 @@
     }).join("");
   }
 
-  /* Tabs are gone on purpose: sign-in and student sign-up are two panels on
-     the page at once, so neither is hidden behind the other. */
+  function setAuthView(view) {
+    var register = view === "register";
+    $("loginPane").hidden = register;
+    $("registerPane").hidden = !register;
+    $("loginTab").classList.toggle("active", !register);
+    $("registerTab").classList.toggle("active", register);
+    $("loginTab").setAttribute("aria-selected", register ? "false" : "true");
+    $("registerTab").setAttribute("aria-selected", register ? "true" : "false");
+    var first = register ? $("regUser") : $("loginUser");
+    if (first) first.focus();
+  }
 
   function renderCollegeOptions() {
     var sel = $("regCollege");
@@ -215,6 +223,8 @@
     $("loginForm").addEventListener("submit", submitLogin);
     $("registerForm").addEventListener("submit", submitRegister);
     $("regCollege").addEventListener("change", renderBlockOptions);
+    $("loginTab").addEventListener("click", function () { setAuthView("login"); });
+    $("registerTab").addEventListener("click", function () { setAuthView("register"); });
   }
 
   DC.afterLang(function () {
@@ -224,6 +234,7 @@
   });
 
   wire();
+  setAuthView("login");
 
   DC.start(function (user) {
     // Already signed in? There is nothing for you here — go to your own console

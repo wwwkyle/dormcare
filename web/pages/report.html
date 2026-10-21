@@ -43,7 +43,6 @@
         <h2><span aria-hidden="true">🤖</span> <span data-i18n="intakeTitle">AI 智能受理</span></h2>
         <span class="tag ai" data-i18n="tagRag">RAG</span>
       </div>
-      <p class="hint" data-i18n="intakeHint">输入文字、语音或图片，多轮补充信息；确认草稿后才会创建工单。</p>
       <ol class="intake-steps" id="intakeSteps" data-i18n-aria="intakeProgress"
           aria-label="受理进度">
         <li data-step="describe" class="active" data-i18n="stepDescribe">描述问题</li>
@@ -79,9 +78,9 @@
           <span data-i18n="photoChoose">拍照 / 相册</span>
           <input id="photoInput" type="file" accept="image/jpeg,image/png" capture="environment" multiple>
         </label>
-        <span class="hint" id="speechHint" data-i18n="speechHint">语音结果进入同一输入框，可编辑后发送。</span>
+        <span class="hint" id="speechHint" hidden></span>
       </div>
-      <p class="hint" data-i18n="photoRules">仅 JPG/PNG，每张不超过 5MB。</p>
+      <p class="hint" data-i18n="photoRules">JPG/PNG，每张不超过 5MB，最多 5 张。</p>
       <div class="image-grid" id="photoPreview"></div>
       <div class="row">
         <button type="button" class="btn primary" id="agentSend" data-i18n="agentSend">发送给 AI</button>
@@ -97,7 +96,7 @@
         <h2><span aria-hidden="true">📝</span> <span data-i18n="formTitle">草稿编辑与手工报修</span></h2>
         <span class="tag" id="formAiTag" hidden data-i18n="tagAiFilled">AI 已填充</span>
       </div>
-      <p class="hint" data-i18n="manualFallbackHint">AI 不可用时，可在这里直接填写并提交。</p>
+      <p class="hint" data-i18n="manualFallbackHint">可修改草稿，或直接填写提交。</p>
       <div class="agent-draft" id="agentDraft" hidden></div>
 
       <label class="lbl" for="fTitle" data-i18n="lblTitle">工单标题</label>
@@ -144,8 +143,8 @@
       <select id="fDate"></select>
 
       <label class="lbl">
-        <span data-i18n="lblSlots">空闲时间（可多选，每格 30 分钟）</span>
-        <span class="lbl-note" data-i18n="lblSlotsNote">点击或拖动选择；系统只会把这一单排进你勾选的时段</span>
+        <span data-i18n="lblSlots">空闲时间（可多选）</span>
+        <span class="lbl-note" data-i18n="lblSlotsNote">只排在所选时段内</span>
       </label>
       <div class="slot-wrap">
         <div class="slot-grid" id="slotGrid"></div>

@@ -108,7 +108,10 @@ def main():
                                         "college": "muse", "dorm": "B-1"}, "POST"),
             ("/api/admin/worker/create", {"worker_id": "X1", "name": "x", "password": "fix2026",
                                           "specialties": ["desk"]}, "POST"),
+            ("/api/admin/ticket/create", {"owner_user_id": "U-1"}, "POST"),
+            ("/api/admin/ticket/update", {"id": "T00000000"}, "POST"),
             ("/api/admin/ticket/delete", {"id": "T00000000"}, "POST"),
+            ("/api/admin/audit?limit=5", None, "GET"),
         ]:
             s, d = anon.call(path, body, method)
             check("anonymous %-28s -> 401" % path, s == 401, "%d %s" % (s, d.get("code")))
@@ -135,6 +138,11 @@ def main():
               "phone": "13800000000", "college": "muse", "dorm": "B-1"}, "POST"),
             ("technician cannot delete a ticket", tech, "/api/admin/ticket/delete",
              {"id": "T00000000"}, "POST"),
+            ("student cannot create an admin ticket", stu, "/api/admin/ticket/create",
+             {"owner_user_id": "U-2024001"}, "POST"),
+            ("technician cannot edit an admin ticket", tech, "/api/admin/ticket/update",
+             {"id": "T00000000", "title": "x"}, "POST"),
+            ("student cannot read admin audit", stu, "/api/admin/audit", None, "GET"),
         ]:
             s, d = client.call(path, body, method)
             check("%s -> 403" % label, s == 403 and d.get("code") == "forbidden",
@@ -438,8 +446,155 @@ def main():
               s == 400 and d.get("code") == "auth_weak_password", "%d %s" % (s, d.get("code")))
 
         # ---------------------------------------------------------------- #
-        # 6. removing a ticket                                               #
+        # 6. highest authority inside the ticket-management domain          #
         # ---------------------------------------------------------------- #
+        admin_ticket = {
+            "owner_user_id": "U-2024001",
+            "title": "管理员代建：门锁",
+            "repair_type": "door",
+            "priority": "high",
+            "date": day,
+            "slots": [[2, 6]],
+            "description": "门锁无法正常闭合",
+            "client_request_id": "admin-create-001",
+        }
+        s, created = admin.call("/api/admin/ticket/create", admin_ticket)
+        managed_id = (created.get("ticket") or {}).get("id")
+        check("administrator creates a ticket for an existing student",
+              s == 200 and created.get("created") is True and managed_id,
+              "%d %s" % (s, created.get("code")))
+        managed = created.get("ticket") or {}
+        check("server stamps owner and defaults the student's snapshots",
+              managed.get("user_id") == "U-2024001"
+              and managed.get("user_username") == "2024001"
+              and managed.get("college") == "shaw"
+              and bool(managed.get("student_name"))
+              and bool(managed.get("contact")), managed)
+
+        s, replay = admin.call("/api/admin/ticket/create", admin_ticket)
+        check("same client request id replays the same create",
+              s == 200 and replay.get("idempotent_replay") is True
+              and replay.get("ticket", {}).get("id") == managed_id, replay)
+        conflicting = dict(admin_ticket, title="同一请求号的不同内容")
+        s, d = admin.call("/api/admin/ticket/create", conflicting)
+        check("reusing a request id for different data -> 409",
+              s == 409 and d.get("code") == "idempotency_conflict",
+              "%d %s" % (s, d.get("code")))
+        s, d = admin.call("/api/admin/ticket/create",
+                          dict(admin_ticket, owner_user_id="U-nobody",
+                               client_request_id="admin-create-bad-owner"))
+        check("admin create rejects a nonexistent owner",
+              s == 400 and d.get("code") == "bad_owner", "%d %s" % (s, d.get("code")))
+        s, d = admin.call("/api/admin/ticket/create",
+                          dict(admin_ticket, user_id="U-2024001",
+                               client_request_id="admin-create-forged"))
+        check("admin create rejects arbitrary ownership fields",
+              s == 400 and d.get("code") == "bad_fields", "%d %s" % (s, d.get("code")))
+
+        s, mine = stu.call("/api/tickets")
+        check("administrator-created ticket is visible to its student",
+              s == 200 and managed_id in [x["id"] for x in mine.get("tickets", [])],
+              [x.get("id") for x in mine.get("tickets", [])])
+
+        version = managed.get("version")
+        s, edited = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": version,
+            "title": "管理员修订：门锁", "priority": "urgent",
+            "student_name": "代报联系人", "contact": "13800009999",
+            "college": "muse", "block": "", "dorm": "公共大厅",
+            "public_area": True, "assigned_worker": "W-A01", "status": "accepted",
+        })
+        managed = edited.get("ticket") or {}
+        check("administrator edits fields, assigns and accepts atomically",
+              s == 200 and managed.get("title") == "管理员修订：门锁"
+              and managed.get("priority") == "urgent"
+              and managed.get("public") is True
+              and managed.get("assigned_worker", {}).get("id") == "W-A01"
+              and managed.get("status") == "accepted"
+              and bool(managed.get("accepted_at")), managed)
+
+        s, jobs = tech.call("/api/tickets")
+        check("manual assignment makes the ticket visible to that technician",
+              s == 200 and managed_id in [x["id"] for x in jobs.get("tickets", [])],
+              [x.get("id") for x in jobs.get("tickets", [])])
+        other_tech = Client(BASE, *DEMO_WORKERS[1])
+        s, other_jobs = other_tech.call("/api/tickets")
+        check("manual assignment hides the ticket from other technicians",
+              managed_id not in [x["id"] for x in other_jobs.get("tickets", [])],
+              [x.get("id") for x in other_jobs.get("tickets", [])])
+
+        s, d = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": version, "title": "stale edit"})
+        check("stale optimistic update -> 409",
+              s == 409 and d.get("code") == "edit_conflict", "%d %s" % (s, d.get("code")))
+        current_version = managed.get("version")
+        s, d = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": current_version,
+            "assigned_worker": "W-nobody"})
+        check("assigning a nonexistent technician -> 400",
+              s == 400 and d.get("code") == "bad_worker", "%d %s" % (s, d.get("code")))
+        s, d = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": current_version,
+            "created_at": "2000-01-01"})
+        check("immutable or unknown update fields -> 400",
+              s == 400 and d.get("code") == "bad_fields", "%d %s" % (s, d.get("code")))
+
+        s, d = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": current_version, "status": "done"})
+        check("admin completion without evidence is rejected by default",
+              s == 400 and d.get("code") == "evidence_required", "%d %s" % (s, d.get("code")))
+        s, d = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": current_version, "status": "done",
+            "override_completion_evidence": True})
+        check("evidence override without a reason is rejected",
+              s == 400 and d.get("code") == "override_reason_required",
+              "%d %s" % (s, d.get("code")))
+        s, done = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": current_version, "status": "done",
+            "override_completion_evidence": True,
+            "override_reason": "现场旧工单补录，纸质验收单已归档"})
+        managed = done.get("ticket") or {}
+        check("explicit reason permits emergency completion override",
+              s == 200 and managed.get("status") == "done"
+              and managed.get("done_at") and managed.get("completed_at")
+              and managed.get("completed_by") == "W-A01", managed)
+        s, confirmed = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": managed.get("version"),
+            "status": "confirmed"})
+        managed = confirmed.get("ticket") or {}
+        check("administrator can close any ticket",
+              s == 200 and managed.get("status") == "confirmed"
+              and bool(managed.get("confirmed_at")), managed)
+        s, reopened = admin.call("/api/admin/ticket/update", {
+            "id": managed_id, "expected_version": managed.get("version"),
+            "status": "pending"})
+        managed = reopened.get("ticket") or {}
+        check("status rollback clears timestamps that no longer apply",
+              s == 200 and managed.get("status") == "pending"
+              and managed.get("accepted_at") is None
+              and managed.get("done_at") is None
+              and managed.get("completed_at") is None
+              and managed.get("confirmed_at") is None, managed)
+        s, audit = admin.call("/api/admin/audit?limit=20", None, "GET")
+        audit_rows = audit.get("audit", [])
+        check("completion override reason and changed field names are audited",
+              s == 200 and any(
+                  x.get("ticket_id") == managed_id
+                  and x.get("override_reason")
+                  and "status" in x.get("changed_fields", [])
+                  and "description" not in x
+                  for x in audit_rows), audit_rows[:3])
+
+        # ---------------------------------------------------------------- #
+        # 7. removing a ticket                                               #
+        # ---------------------------------------------------------------- #
+        s, d = admin.call("/api/admin/ticket/delete", {"id": managed_id})
+        check("administrator deletes the managed ticket", s == 200 and d.get("ok") is True, d)
+        s, audit = admin.call("/api/admin/audit?limit=10", None, "GET")
+        check("ticket deletion writes a metadata-only audit event",
+              s == 200 and any(x.get("action") == "delete"
+                               and x.get("ticket_id") == managed_id
+                               for x in audit.get("audit", [])), audit.get("audit", [])[:3])
         s, d = admin.call("/api/admin/ticket/delete", {"id": first_id})
         check("an administrator can remove a ticket", s == 200 and d.get("ok") is True, d)
         s, d = admin.call("/api/admin/tickets")

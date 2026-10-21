@@ -34,8 +34,8 @@ Students, technicians and administrators sign in (see auth.py) and the server
 
     student  creates tickets, sees ONLY their own, rates the finished job
     worker   sees ONLY the tickets the engine assigned to them
-    admin    sees the whole board and operates the accounts, but owns no
-             tickets and no route — an operator, not a fifth wheel
+    admin    manages the whole board and accounts through dedicated admin
+             endpoints, but owns no tickets and cannot borrow another role
 
 Every endpoint checks the session before it touches data, and the three
 consoles are separate pages that each redirect a visitor of the wrong role
@@ -56,6 +56,7 @@ Security
 Runtime: Python standard library only. No pip install required.
 """
 
+import hashlib
 import json
 import os
 import posixpath
@@ -521,7 +522,11 @@ def day_context(day_iso, lang="zh"):
     """
     tickets = STORE.tickets()
     ctx = {}
-    for wid, bucket in assign_day(day_iso, tickets, STORE.workers()):
+    assigned = assignment_map(day_iso)
+    for worker in STORE.workers():
+        wid = worker.get("id")
+        bucket = [t for t in tickets
+                  if t.get("date") == day_iso and assigned.get(t.get("id")) == wid]
         if not bucket:
             continue
         jobs, _unscheduled, _stats = schedule_day(day_iso, bucket, worker_record(wid), lang)
@@ -555,11 +560,10 @@ def worker_tickets(worker_id):
 def build_plan(day_iso, worker_id, lang="zh"):
     """Run the engine for one (worker, day) pair — never for anybody else."""
     worker = worker_record(worker_id)
-    mine, pool = [], 0
-    for wid, bucket in assign_day(day_iso, STORE.tickets(), STORE.workers()):
-        pool += len(bucket)
-        if wid == worker_id:
-            mine = list(bucket)
+    tickets = [t for t in STORE.tickets() if t.get("date") == day_iso]
+    assigned = assignment_map(day_iso)
+    mine = [t for t in tickets if assigned.get(t.get("id")) == worker_id]
+    pool = len([t for t in tickets if assigned.get(t.get("id"))])
     jobs, unscheduled, stats = schedule_day(day_iso, mine, worker, lang)
     stats = dict(stats, assigned=len(mine), pool=pool)
     return worker, jobs, unscheduled, stats
@@ -731,6 +735,10 @@ def ticket_view(t, user, lang="zh", ctx=None):
                          "seq": entry.get("seq")}
                         if entry.get("start") else None),
     }
+    # Internal idempotency metadata is never part of any role's ticket view.
+    for internal in ("admin_client_request_id", "admin_request_fingerprint",
+                     "admin_created_by"):
+        out.pop(internal, None)
     # ---- 排队状态 / where it stands -------------------------------------- #
     # Ordered: an explicit technician decision outranks the engine's output,
     # because it is newer and it is a human's call about the physical world.
@@ -754,8 +762,10 @@ def ticket_view(t, user, lang="zh", ctx=None):
     out["feedback"] = t.get("feedback", "")
     out["image_ids"] = list(t.get("image_ids") or [])
     out["completion_image_ids"] = list(t.get("completion_image_ids") or [])
-    out["completed_at"] = t.get("completed_at") or t.get("done_at")
-    out["completed_by"] = t.get("completed_by") or t.get("assigned_worker") or ""
+    out["completed_at"] = (t.get("completed_at") if "completed_at" in t
+                           else t.get("done_at"))
+    out["completed_by"] = (t.get("completed_by") if "completed_by" in t
+                           else t.get("assigned_worker") or "")
     return out
 
 
@@ -781,11 +791,9 @@ def visible_tickets(user, lang="zh"):
 # 管理员端 / Administrator side
 #
 # The third role exists for a different job from the other two: it neither
-# files nor performs work, so it owns no tickets and no route. What it can do
-# is see the whole board and operate the accounts — correct a room that was
-# entered wrong at sign-up, reset a forgotten password, and issue a technician
-# account, which is the one kind of account this system never lets people claim
-# for themselves.
+# files as a student nor performs work, so it owns no tickets and no route.
+# Dedicated admin endpoints manage the whole board and accounts without
+# weakening either role's private interface.
 #
 # The projection below is deliberately separate from `ticket_view`: an
 # administrator needs the owner's identity on every row (to answer "whose
@@ -1182,6 +1190,18 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"tickets": all_tickets_view(lang)})
             return
 
+        if path == "/api/admin/audit":
+            user = self._require(ROLE_ADMIN)
+            if not user:
+                return
+            try:
+                limit = max(1, min(200, int(params.get("limit") or 50)))
+            except (TypeError, ValueError):
+                self._err(400, "bad_limit", "Audit limit must be an integer.")
+                return
+            self._json(200, {"audit": STORE.admin_audit(limit), "limit": limit})
+            return
+
         if path == "/api/admin/users":
             user = self._require(ROLE_ADMIN)
             if not user:
@@ -1359,6 +1379,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/admin/user/password": self._api_admin_user_password,
             "/api/admin/user/create": self._api_admin_user_create,
             "/api/admin/worker/create": self._api_admin_worker_create,
+            "/api/admin/ticket/create": self._api_admin_ticket_create,
+            "/api/admin/ticket/update": self._api_admin_ticket_update,
             "/api/admin/ticket/delete": self._api_admin_ticket_delete,
         }
         fn = routes.get(path)
@@ -2682,15 +2704,311 @@ class Handler(BaseHTTPRequestHandler):
                          "worker": admin_worker_view(record, lang),
                          "user": admin_user_view(account, lang)})
 
+    @staticmethod
+    def _admin_clean_slots(value):
+        if not isinstance(value, list) or not value:
+            return None
+        clean = []
+        for pair in value:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                return None
+            try:
+                start, end = int(pair[0]), int(pair[1])
+            except (TypeError, ValueError):
+                return None
+            if not (0 <= start <= end <= 20):
+                return None
+            clean.append([start, end])
+        return clean
+
+    def _admin_ticket_business_patch(self, body, base=None, creating=False):
+        """Validate editable business fields without accepting ownership metadata."""
+        current = base or {}
+        patch = {}
+        if creating or "title" in body:
+            title = (body.get("title") or "").strip()[:80]
+            if not title:
+                return None, ("bad_fields", "A title is required.")
+            patch["title"] = title
+        if creating or "repair_type" in body:
+            repair_type = body.get("repair_type")
+            if repair_type not in REPAIR_BY_ID:
+                return None, ("bad_fields", "Unknown repair category.")
+            patch["repair_type"] = repair_type
+        if creating or "priority" in body:
+            priority = body.get("priority")
+            if priority not in PRIORITY_LEVELS:
+                return None, ("bad_fields", "Unknown priority.")
+            patch["priority"] = priority
+        if creating or "date" in body:
+            day = body.get("date")
+            try:
+                date.fromisoformat(day)
+            except (TypeError, ValueError):
+                return None, ("bad_fields", "Invalid date.")
+            patch["date"] = day
+        if creating or "slots" in body:
+            slots = self._admin_clean_slots(body.get("slots"))
+            if slots is None:
+                return None, ("bad_fields", "Invalid availability windows.")
+            patch["slots"] = slots
+        for key, maximum in (("description", 1000), ("student_name", 60),
+                             ("contact", 80)):
+            if key in body:
+                patch[key] = (body.get(key) or "").strip()[:maximum]
+
+        address_keys = {"college", "block", "dorm", "public_area", "public"}
+        if creating or any(key in body for key in address_keys):
+            college = body.get("college", current.get("college", ""))
+            if college not in COLLEGE_BY_ID:
+                return None, ("bad_fields", "Unknown college.")
+            block = normalize_block(college, body.get("block", current.get("block", "")))
+            if college_real_blocks(college) and not block:
+                return None, ("bad_fields", "A tower is required for this college.")
+            dorm = (body.get("dorm", current.get("dorm", "")) or "").strip()[:MAX_DORM]
+            if not dorm:
+                return None, ("bad_fields", "A repair location is required.")
+            patch.update({
+                "college": college,
+                "block": block,
+                "dorm": dorm,
+                "public": bool(body.get(
+                    "public_area", body.get("public", current.get("public", False)))),
+            })
+        return patch, None
+
+    @staticmethod
+    def _admin_audit(actor, action, ticket_id, changed_fields, reason=""):
+        event = {
+            "actor_admin_id": actor.get("id", ""),
+            "action": action,
+            "ticket_id": ticket_id,
+            "changed_fields": sorted(set(changed_fields)),
+        }
+        if reason:
+            event["override_reason"] = reason[:300]
+        return STORE.add_admin_audit(event)
+
+    def _api_admin_ticket_create(self, body, ip):
+        admin = self._require(ROLE_ADMIN)
+        if not admin:
+            return
+        allowed = {
+            "owner_user_id", "title", "repair_type", "priority", "date", "slots",
+            "description", "student_name", "contact", "college", "block", "dorm",
+            "public_area", "public", "lang", "client_request_id",
+        }
+        if set(body) - allowed:
+            self._err(400, "bad_fields", "The request contains fields that cannot be set.")
+            return
+        owner = STORE.user(body.get("owner_user_id"))
+        if not owner or owner.get("role") != ROLE_STUDENT:
+            self._err(400, "bad_owner", "Choose an existing student account.")
+            return
+        prepared = dict(body)
+        prepared.setdefault("college", owner.get("college", ""))
+        prepared.setdefault("block", owner.get("block", ""))
+        prepared.setdefault("dorm", owner.get("dorm", ""))
+        prepared.setdefault("student_name", default_student_name(owner, body_lang(body)))
+        prepared.setdefault("contact", owner.get("phone", ""))
+        patch, error = self._admin_ticket_business_patch(prepared, creating=True)
+        if error:
+            self._err(400, error[0], error[1])
+            return
+        request_id = (body.get("client_request_id") or "").strip()[:100]
+        if body.get("client_request_id") is not None and not request_id:
+            self._err(400, "bad_fields", "client_request_id cannot be empty.")
+            return
+        ticket = {
+            **patch,
+            "user_id": owner["id"],
+            "user_username": owner.get("username", ""),
+            "student_name": patch.get("student_name") or default_student_name(
+                owner, body_lang(body)),
+            "contact": patch.get("contact") or owner.get("phone", ""),
+            "lang": body_lang(body),
+            "status": "pending",
+            "assigned_worker": "",
+            "image_ids": [],
+            "completion_image_ids": [],
+            "ai_reason": "",
+            "ai_source": "",
+            "agent_session_id": "",
+        }
+        fingerprint_body = {key: body.get(key) for key in sorted(allowed)
+                            if key not in ("client_request_id", "lang")}
+        fingerprint = hashlib.sha256(json.dumps(
+            fingerprint_body, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":")).encode("utf-8")).hexdigest()
+        outcome, saved = STORE.add_ticket_idempotent(
+            ticket, request_id, admin["id"], fingerprint)
+        if outcome == "conflict":
+            self._err(409, "idempotency_conflict",
+                      "That request id was already used for different ticket data.")
+            return
+        if outcome == "created":
+            self._admin_audit(
+                admin, "create", saved["id"], list(patch.keys()) + ["owner_user_id"])
+        lang = body_lang(body)
+        self._json(200, {
+            "ok": True,
+            "created": outcome == "created",
+            "idempotent_replay": outcome == "existing",
+            "ticket": ticket_view(saved, _ADMIN_PRINCIPAL, lang,
+                                  day_context(saved.get("date", ""), lang)),
+        })
+
+    def _api_admin_ticket_update(self, body, ip):
+        admin = self._require(ROLE_ADMIN)
+        if not admin:
+            return
+        allowed = {
+            "id", "expected_updated_at", "expected_version", "title", "repair_type",
+            "priority", "date", "slots", "description", "student_name", "contact",
+            "college", "block", "dorm", "public_area", "public", "status",
+            "assigned_worker", "completion_image_ids", "override_completion_evidence",
+            "override_reason", "lang",
+        }
+        if set(body) - allowed or "owner_user_id" in body:
+            self._err(400, "bad_fields", "The request contains fields that cannot be edited.")
+            return
+        ticket = STORE.ticket(body.get("id"))
+        if not ticket:
+            self._err(404, "not_found", "Ticket not found.")
+            return
+        try:
+            expected_version = (int(body["expected_version"])
+                                if body.get("expected_version") is not None else None)
+        except (TypeError, ValueError):
+            self._err(400, "bad_fields", "expected_version must be an integer.")
+            return
+        expected_updated_at = body.get("expected_updated_at")
+        if expected_updated_at is not None and not isinstance(expected_updated_at, str):
+            self._err(400, "bad_fields", "expected_updated_at must be a string.")
+            return
+
+        patch, error = self._admin_ticket_business_patch(body, ticket, creating=False)
+        if error:
+            self._err(400, error[0], error[1])
+            return
+        changed = set(patch)
+        worker = ticket.get("assigned_worker", "")
+        if "assigned_worker" in body:
+            worker = (body.get("assigned_worker") or "").strip()
+            if worker and not STORE.worker(worker):
+                self._err(400, "bad_worker", "Choose an existing technician.")
+                return
+            patch["assigned_worker"] = worker
+            changed.add("assigned_worker")
+
+        status = body.get("status", ticket.get("status", "pending"))
+        if "status" in body:
+            if status not in STATUS_FLOW:
+                self._err(400, "bad_status", "Unknown ticket status.")
+                return
+            if status in ("accepted", "done") and not worker:
+                self._err(400, "bad_worker", "Accepted and completed tickets need a technician.")
+                return
+            patch["status"] = status
+            changed.add("status")
+
+        evidence = ticket.get("completion_image_ids") or []
+        if "completion_image_ids" in body:
+            supplied = body.get("completion_image_ids")
+            if not isinstance(supplied, list) or len(supplied) > MAX_IMAGES:
+                self._err(400, "bad_fields", "Invalid completion evidence.")
+                return
+            evidence = []
+            for upload_id in supplied:
+                upload = STORE.upload(upload_id)
+                if (not upload or upload.get("purpose") != "completion"
+                        or upload.get("ticket_id") not in ("", ticket["id"])):
+                    self._err(400, "bad_fields", "Invalid completion evidence.")
+                    return
+                evidence.append(upload_id)
+            patch["completion_image_ids"] = evidence
+            changed.add("completion_image_ids")
+
+        override = bool(body.get("override_completion_evidence"))
+        reason = (body.get("override_reason") or "").strip()
+        if override and not reason:
+            self._err(400, "override_reason_required",
+                      "An override reason is required.")
+            return
+        if (status == "done" and not evidence and not override
+                and ("status" in body or "completion_image_ids" in body)):
+            self._err(400, "evidence_required",
+                      "Completion evidence is required unless an override is recorded.")
+            return
+
+        now = datetime.now().isoformat(timespec="seconds")
+        current_status = ticket.get("status", "pending")
+        if "status" in body:
+            if status == "pending":
+                patch.update({
+                    "accepted_at": None, "done_at": None, "completed_at": None,
+                    "completed_by": "", "confirmed_at": None,
+                })
+            elif status == "accepted":
+                if current_status != "accepted":
+                    patch["accepted_at"] = now
+                patch.update({
+                    "done_at": None, "completed_at": None, "completed_by": "",
+                    "confirmed_at": None,
+                })
+            elif status == "done":
+                if current_status != "done":
+                    patch["done_at"] = now
+                    patch["completed_at"] = now
+                patch["completed_by"] = worker
+                patch["confirmed_at"] = None
+            elif status == "confirmed":
+                if current_status != "confirmed":
+                    patch["confirmed_at"] = now
+            changed.update(key for key in patch if key.endswith("_at") or key == "completed_by")
+        elif worker and current_status == "done" and "assigned_worker" in body:
+            patch["completed_by"] = worker
+            changed.add("completed_by")
+
+        operational = changed - {"accepted_at", "done_at", "completed_at",
+                                 "completed_by", "confirmed_at"}
+        if not operational:
+            self._err(400, "bad_fields", "There is nothing to update.")
+            return
+        outcome, updated = STORE.update_ticket_if_current(
+            ticket["id"], patch, expected_updated_at, expected_version)
+        if outcome == "conflict":
+            self._err(409, "edit_conflict",
+                      "The ticket changed after this form was opened.")
+            return
+        if outcome == "missing":
+            self._err(404, "not_found", "Ticket not found.")
+            return
+        for upload_id in evidence:
+            STORE.update_upload(upload_id, {"ticket_id": ticket["id"]})
+        self._admin_audit(admin, "update", ticket["id"], changed,
+                          reason if override else "")
+        lang = body_lang(body)
+        self._json(200, {"ok": True, "ticket": ticket_view(
+            updated, _ADMIN_PRINCIPAL, lang,
+            day_context(updated.get("date", ""), lang))})
+
     def _api_admin_ticket_delete(self, body, ip):
         """Remove any ticket. The operator's remedy for a duplicate or a test."""
-        if not self._require(ROLE_ADMIN):
+        admin = self._require(ROLE_ADMIN)
+        if not admin:
+            return
+        if set(body) - {"id", "lang"}:
+            self._err(400, "bad_fields", "The request contains fields that cannot be set.")
             return
         tid = body.get("id")
         if not STORE.ticket(tid):
             self._err(404, "not_found", "Ticket not found.")
             return
-        self._json(200, {"ok": STORE.delete_ticket(tid)})
+        deleted = STORE.delete_ticket(tid)
+        if deleted:
+            self._admin_audit(admin, "delete", tid, [])
+        self._json(200, {"ok": deleted})
 
 
 def _local_rationale(day, jobs, stats, lang):

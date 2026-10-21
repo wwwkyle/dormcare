@@ -819,6 +819,20 @@ async function runRole(page, module, cookie, opts) {
       id("adTicketList").innerHTML.slice(0, 110));
     check("board rows offer removal",
       /data-act="delete-ticket"/.test(id("adTicketList").innerHTML));
+    check("board rows offer edit, status and assignment controls",
+      /data-act="edit-ticket"/.test(id("adTicketList").innerHTML) &&
+      /data-act="status-ticket"/.test(id("adTicketList").innerHTML) &&
+      /data-act="assign-ticket"/.test(id("adTicketList").innerHTML));
+    check("admin ticket editor exposes create and validated lifecycle fields",
+      !!id("adNewTicket") && !!id("adTicketForm") && !!id("adOwnerUser") &&
+      !!id("adRepairType") && !!id("adPriority") && !!id("adDate") &&
+      !!id("adSlots") && !!id("adStatus") && !!id("adWorker") &&
+      !!id("adOverride") && !!id("adOverrideReason"));
+    check("admin owner and technician selectors are populated",
+      id("adOwnerUser").querySelectorAll("option").length >= 11 &&
+      id("adWorker").querySelectorAll("option").length >= 4,
+      "owners=" + id("adOwnerUser").querySelectorAll("option").length +
+      " workers=" + id("adWorker").querySelectorAll("option").length);
     check("the board page carries no account desk",
       document.getElementById("adUserList") === null);
     check("the board page carries no stat cards",
@@ -835,6 +849,9 @@ async function runRole(page, module, cookie, opts) {
     check("switching to EN localizes the board",
       /Filed by|Contact|Technician/.test(id("adTicketList").innerHTML),
       id("adTicketList").innerHTML.slice(0, 90));
+    check("switching to EN localizes ticket-management controls",
+      /New ticket/.test(txt("adNewTicket")) &&
+      /Create ticket/.test(txt("adEditorTitle")));
     DC.setLang("zh");
   }
 

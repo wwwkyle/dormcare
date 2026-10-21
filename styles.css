@@ -299,6 +299,26 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   background-position: calc(100% - 16px) 16px, calc(100% - 11px) 16px;
   background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
 
+.admin-ticket-form {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px 16px;
+}
+.admin-ticket-form label { display: grid; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.admin-ticket-form .wide { grid-column: 1 / -1; }
+.admin-ticket-form .checkline { display: flex; align-items: center; gap: 8px; align-self: end; min-height: 40px; }
+.admin-ticket-form .checkline input { width: auto; margin: 0; accent-color: var(--brand); }
+.admin-ticket-lifecycle {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 16px;
+  padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #f8fafd;
+}
+.admin-ticket-lifecycle[hidden] { display: none; }
+.admin-ticket-form .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+@media (max-width: 640px) {
+  .admin-ticket-form, .admin-ticket-lifecycle { grid-template-columns: 1fr; }
+  .admin-ticket-form .wide { grid-column: auto; }
+}
+
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .grid2 > div > .lbl, .grid3 > div > .lbl { margin-top: 0; }

@@ -9,7 +9,7 @@ runs on the Python standard library so it deploys anywhere without an install
 step.
 
 Collections: `tickets`, `workers`, `plans`, `users`, `sessions`, `uploads`,
-`agent_sessions`. Accounts and
+`agent_sessions`, `admin_audit`. Accounts and
 sessions share the file so a restart keeps everyone signed in; passwords are
 stored as PBKDF2 digests (see auth.py), never in clear text.
 
@@ -48,9 +48,10 @@ class Store:
             if not isinstance(self._data, dict):
                 self._data = {"tickets": [], "workers": [], "plans": [],
                               "users": [], "sessions": [], "uploads": [],
-                              "agent_sessions": [], "agent_events": []}
+                              "agent_sessions": [], "agent_events": [],
+                              "admin_audit": []}
             for key in ("tickets", "workers", "plans", "users", "sessions",
-                        "uploads", "agent_sessions", "agent_events"):
+                        "uploads", "agent_sessions", "agent_events", "admin_audit"):
                 self._data.setdefault(key, [])
             return self._data
 
@@ -76,8 +77,11 @@ class Store:
 
     def add_ticket(self, ticket):
         with _lock:
+            now = datetime.now().isoformat(timespec="seconds")
             ticket.setdefault("id", "T" + uuid.uuid4().hex[:8].upper())
-            ticket.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
+            ticket.setdefault("created_at", now)
+            ticket.setdefault("updated_at", ticket["created_at"])
+            ticket.setdefault("version", 1)
             ticket.setdefault("status", "pending")
             self._data["tickets"].append(ticket)
             self.save()
@@ -88,9 +92,46 @@ class Store:
             for t in self._data["tickets"]:
                 if t["id"] == ticket_id:
                     t.update(patch)
+                    t["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                    t["version"] = int(t.get("version") or 0) + 1
                     self.save()
                     return t
             return None
+
+    def update_ticket_if_current(self, ticket_id, patch, expected_updated_at=None,
+                                 expected_version=None):
+        """Atomically apply a ticket patch when its optimistic lock still matches."""
+        with _lock:
+            for t in self._data["tickets"]:
+                if t["id"] != ticket_id:
+                    continue
+                current_version = int(t.get("version") or 0)
+                if expected_version is not None and current_version != expected_version:
+                    return "conflict", t
+                if (expected_updated_at is not None
+                        and (t.get("updated_at") or t.get("created_at", "")) != expected_updated_at):
+                    return "conflict", t
+                t.update(patch)
+                t["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                t["version"] = current_version + 1
+                self.save()
+                return "updated", t
+            return "missing", None
+
+    def add_ticket_idempotent(self, ticket, request_id, actor_id, fingerprint):
+        """Create once per administrator request id, atomically."""
+        with _lock:
+            if request_id:
+                for existing in self._data["tickets"]:
+                    if (existing.get("admin_client_request_id") == request_id
+                            and existing.get("admin_created_by") == actor_id):
+                        if existing.get("admin_request_fingerprint") == fingerprint:
+                            return "existing", existing
+                        return "conflict", existing
+                ticket["admin_client_request_id"] = request_id
+                ticket["admin_request_fingerprint"] = fingerprint
+            ticket["admin_created_by"] = actor_id
+            return "created", self.add_ticket(ticket)
 
     def delete_ticket(self, ticket_id):
         with _lock:
@@ -98,6 +139,23 @@ class Store:
             self._data["tickets"] = [t for t in self._data["tickets"] if t["id"] != ticket_id]
             self.save()
             return len(self._data["tickets"]) < before
+
+    # ---- administrator audit -------------------------------------------- #
+
+    def add_admin_audit(self, event):
+        """Store metadata only; callers must never include ticket content."""
+        with _lock:
+            event = dict(event)
+            event.setdefault("id", "AA" + uuid.uuid4().hex[:12].upper())
+            event.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
+            self._data["admin_audit"].append(event)
+            self._data["admin_audit"] = self._data["admin_audit"][-10000:]
+            self.save()
+            return event
+
+    def admin_audit(self, limit=50):
+        with _lock:
+            return list(reversed(self._data["admin_audit"]))[:limit]
 
     # ---- uploads -------------------------------------------------------- #
 

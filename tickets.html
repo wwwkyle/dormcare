@@ -43,11 +43,81 @@
         <div class="head-actions">
           <span class="count" id="adTicketCount"></span>
           <select id="adStatusFilter" class="mini-select" data-i18n-aria="adStatusFilter"></select>
+          <button type="button" class="btn tiny primary" id="adNewTicket" data-i18n="adNewTicket">新建工单</button>
           <button type="button" class="btn tiny" id="adReload" data-i18n="adReload">刷新</button>
         </div>
       </div>
       <p class="hint" data-i18n="adTicketHint"></p>
       <div class="fold-list" id="adTicketList"></div>
+    </section>
+
+    <section class="card" id="adTicketEditor" hidden>
+      <div class="card-head">
+        <h2 id="adEditorTitle" data-i18n="adCreateTicket">新建工单</h2>
+        <button type="button" class="btn tiny" id="adEditorCancel" data-i18n="adCancel">取消</button>
+      </div>
+      <form id="adTicketForm" class="admin-ticket-form" autocomplete="off">
+        <input type="hidden" id="adEditId">
+        <input type="hidden" id="adEditVersion">
+        <label><span data-i18n="adOwner">报修人</span>
+          <select id="adOwnerUser" required></select>
+        </label>
+        <label><span data-i18n="lblTitle">标题</span>
+          <input type="text" id="adTitle" maxlength="80" required>
+        </label>
+        <label><span data-i18n="lblType">报修类别</span>
+          <select id="adRepairType" required></select>
+        </label>
+        <label><span data-i18n="lblPriority">紧急程度</span>
+          <select id="adPriority" required></select>
+        </label>
+        <label><span data-i18n="lblDate">预约日期</span>
+          <select id="adDate" required></select>
+        </label>
+        <label><span data-i18n="adSlotsInput">空闲时段（如 0-3,12-16）</span>
+          <input type="text" id="adSlots" placeholder="0-3,12-16" required>
+        </label>
+        <label><span data-i18n="lblName">联系人</span>
+          <input type="text" id="adStudentName" maxlength="60">
+        </label>
+        <label><span data-i18n="lblContact">联系方式</span>
+          <input type="text" id="adContactInput" maxlength="80">
+        </label>
+        <label><span data-i18n="lblCollege">书院</span>
+          <select id="adCollege" required></select>
+        </label>
+        <label><span data-i18n="lblBlock">楼栋</span>
+          <select id="adBlock"></select>
+        </label>
+        <label><span data-i18n="lblDorm">宿舍 / 位置</span>
+          <input type="text" id="adDorm" maxlength="30" required>
+        </label>
+        <label class="checkline"><input type="checkbox" id="adPublic">
+          <span data-i18n="lblPublicArea">公共区域报修</span>
+        </label>
+        <label class="wide"><span data-i18n="lblDesc">故障描述</span>
+          <textarea id="adDescription" rows="4" maxlength="1000"></textarea>
+        </label>
+        <div id="adLifecycleFields" class="admin-ticket-lifecycle wide" hidden>
+          <label><span data-i18n="adStatus">状态</span>
+            <select id="adStatus"></select>
+          </label>
+          <label><span data-i18n="adAssign">负责师傅</span>
+            <select id="adWorker"></select>
+          </label>
+          <label class="checkline"><input type="checkbox" id="adOverride">
+            <span data-i18n="adOverrideEvidence">无完工图应急修正</span>
+          </label>
+          <label><span data-i18n="adOverrideReason">应急修正原因</span>
+            <input type="text" id="adOverrideReason" maxlength="300">
+          </label>
+        </div>
+        <div class="form-actions wide">
+          <button type="submit" class="btn primary" id="adTicketSave" data-i18n="adSave">保存</button>
+          <button type="button" class="btn" id="adTicketCancel" data-i18n="adCancel">取消</button>
+        </div>
+      </form>
+      <p class="hint" data-i18n="adOwnerLocked">编辑时不能更换报修人；归属始终由服务端校验。</p>
     </section>
 
     <p class="form-msg" id="adMsg"></p>

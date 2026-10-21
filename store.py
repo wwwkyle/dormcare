@@ -140,6 +140,7 @@ class Store:
     def add_agent_session(self, session):
         with _lock:
             session.setdefault("id", "A" + uuid.uuid4().hex.upper())
+            session.setdefault("lang", "zh")
             session.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
             session.setdefault("updated_at", session["created_at"])
             session.setdefault("history", [])

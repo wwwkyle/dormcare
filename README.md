@@ -732,15 +732,18 @@ dormcare/
 统一输入区预览/删除，并作为该条消息的 `image_ids` 发送。页面用四个阶段明确展示
 “描述问题 → AI 追问/建议 → 工单草稿 → 确认提交”，而不是同时铺开两套大表单。
 
-Agent 识别类别、紧急度和信息缺口后有两条分支：
+Agent 首次识别后严格只返回两个主选项：**A 提供维修建议 / B 生成工单**。选择 A 后进入
+可恢复的多轮建议对话，学生可以继续追问位置、安全性或说明仍未恢复；每轮都保留醒目的
+“生成工单”操作，切换后类别、紧急度、描述、图片、位置和日期草稿不丢失。选择 B 后才进入
+单问题补全和草稿流程。两条分支：
 
 1. 信息不足或需要师傅处理：继续追问，随后生成结构化草稿。标题、类型、描述、位置、
    紧急度、图片、日期和上门时段都可核对编辑。
-2. 低风险且有保守自处置方法：显示安全步骤，并让学生选择“已解决，无需报修”或
+2. 低风险且有保守自处置方法：逐轮显示安全步骤，并让学生选择“已解决，无需报修”或
    “仍需师傅，生成工单”。前者只关闭 Agent 会话，不创建工单；后者进入同一草稿流程。
 
-漏电、燃气、烟火和大面积漏水不会进入自处置分支，而是醒目提示远离危险、断开安全范围内
-可断开的总电源/阀门并联系校园应急人员，禁止给出拆修步骤。只有学生点击“确认提交工单”
+漏电、燃气、烟火和大面积漏水即使选择 A 也只返回远离危险、断开安全范围内
+可断开的总电源/阀门、撤离和联系校园应急人员，禁止给出拆修步骤。只有学生点击“确认提交工单”
 才会创建工单，因此不会再
 出现旧分类接口和对话 Agent 各自填表、各自创建造成的状态漂移。
 
@@ -763,14 +766,15 @@ OpenAI-compatible 模型路径中以私有 data URL 构造多模态消息；图�
   学生不能上传 `completion`，师傅只能上传 `completion`。
 - `GET /api/uploads/<id>`（登录）：返回图片字节。仅图片所有者、工单学生、被派师傅或管理员可读；
   上传目录没有公开静态映射。
-- `POST /api/agent/session`（学生）：`{"lang":"zh|en"}`，返回服务端会话。
+- `POST /api/agent/session`（学生）：`{"lang":"zh|en"}`，返回含明确 `lang` 的服务端会话。
 - `POST /api/agent/message`（学生）：普通消息为
-  `{"id","text","image_ids":[],"transcript":false}`；建议分支操作为
-  `{"id","action":"resolved|create_draft","image_ids":[]}`。返回
+  `{"id","lang","text","image_ids":[],"transcript":false}`；分支操作为
+  `{"id","lang","action":"self_help|smart_repair|resolved|create_draft","image_ids":[]}`。返回
   `stage/detected/missing/self_help/reply/source/ready/draft/safety_warning`。
-  `resolved` 只结束会话且不创建工单；会话保留最多 30 条历史。
+  每次请求用显式 `lang` 更新 session，新的 assistant history 记录该轮语言；旧会话缺失语言时
+  默认 `zh`。`resolved` 只结束会话且不创建工单；会话保留最多 30 条历史。
 - `GET /api/agent/session?id=<id>`（学生）：返回自己的会话、历史、草稿和创建结果；跨账号 `403`。
-- `POST /api/agent/confirm`（学生）：`{"id","date":"YYYY-MM-DD","slots":[[start,end]],"contact":""}`。
+- `POST /api/agent/confirm`（学生）：`{"id","lang","date":"YYYY-MM-DD","slots":[[start,end]],"contact":""}`。
   只有 `ready=true` 的未确认草稿可创建一次工单。
 - `POST /api/tickets` 新增可选字段：`title`、`image_ids`（最多 5 个本人未绑定上传）。
 - `POST /api/tickets/status`：`status=done` 时新增必填

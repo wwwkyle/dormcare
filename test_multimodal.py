@@ -1,6 +1,7 @@
 """Focused upload, completion-proof and intake-agent tests."""
 import base64
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -18,6 +19,10 @@ def ok(label, condition):
     print(("PASS  " if condition else "FAIL  ") + label)
     if not condition:
         raise AssertionError(label)
+
+
+def has_zh(value):
+    return bool(re.search(r"[\u3400-\u9fff]", str(value or "")))
 
 
 def main():
@@ -86,19 +91,33 @@ def main():
 
         s, agent = stu.call("/api/agent/session", {"lang": "zh"})
         aid = agent["session"]["id"]
-        s, first = stu.call("/api/agent/message", {"id": aid, "text": "插座坏了"})
+        s, first = stu.call("/api/agent/message", {
+            "id": aid, "lang": "zh", "text": "插座坏了"})
         ok("ordinary routing exposes stable v2 fields",
            s == 200 and first["contract_version"] == 2 and
            [x["id"] for x in first["route_options"]] ==
            ["self_help", "smart_repair"] and
            first["state"] == "route_choice" and first["response_mode"] == "complete")
+        ok("Chinese first turn is strictly Chinese",
+           first["lang"] == "zh" and has_zh(first["reply"]))
         ok("first turn never asks a follow-up",
            not first["ready"] and not first["missing"] and
            first["next_question"] is None and not first["question_options"])
+        s, english_session = stu.call("/api/agent/session", {"lang": "en"})
+        english_id = english_session["session"]["id"]
+        s, english_first = stu.call("/api/agent/message", {
+            "id": english_id, "lang": "en",
+            "text": "The dorm chair keeps sinking and cannot be used safely."})
+        ok("English first turn has exactly two English routes",
+           s == 200 and english_first["lang"] == "en" and
+           [x["id"] for x in english_first["route_options"]] ==
+           ["self_help", "smart_repair"] and
+           not has_zh(english_first["reply"]))
         s, bad_option = stu.call("/api/agent/message", {
             "id": aid, "option": "invented"})
         ok("server rejects invented question option",
-           s == 400 and bad_option.get("code") == "bad_question_option")
+           s == 400 and bad_option.get("code") == "bad_question_option" and
+           bad_option.get("lang") == "zh" and has_zh(bad_option.get("error")))
         s, other_agent = other.call("/api/agent/session", {"lang": "zh"})
         other_aid = other_agent["session"]["id"]
         s, forbidden_image = other.call("/api/agent/message", {
@@ -150,6 +169,25 @@ def main():
            advice["kb_status"] == "empty" and
            advice["solution"]["source"] == "fallback" and
            advice["solution"]["safety_reviewed"])
+        s, advice_follow_1 = stu.call("/api/agent/message", {
+            "id": advice_id, "lang": "zh", "text": "路由器的复位按钮在哪里？"})
+        s2, advice_follow_2 = stu.call("/api/agent/message", {
+            "id": advice_id, "lang": "zh", "text": "还是没恢复，这个步骤安全吗？"})
+        ok("advice supports at least two retained follow-up turns",
+           s == 200 and s2 == 200 and
+           advice_follow_1["state"] == advice_follow_2["state"] == "advice" and
+           has_zh(advice_follow_1["reply"]) and has_zh(advice_follow_2["reply"]))
+        ok("every advice turn can generate a ticket",
+           all(any(route["id"] == "smart_repair" and route["enabled"]
+                   for route in item["route_options"])
+               for item in (advice, advice_follow_1, advice_follow_2)))
+        restored_advice = stu.call(
+            "/api/agent/session?id=" + advice_id)[1]["session"]
+        ok("refresh restores advice state, history and ticket action",
+           restored_advice["lang"] == "zh" and
+           restored_advice["state"] == "advice" and
+           len(restored_advice["history"]) >= 6 and
+           restored_advice["route_options"][0]["id"] == "smart_repair")
         s, no_hit_session = stu.call("/api/agent/session", {"lang": "zh"})
         no_hit_id = no_hit_session["session"]["id"]
         stu.call("/api/agent/message", {
@@ -160,12 +198,60 @@ def main():
            s == 200 and no_hit["stage"] == "no_solution" and
            no_hit["kb_status"] == "empty" and no_hit["solution"] is None and
            no_hit["draft"]["repair_type"] == "power")
+        s, zh_switch_session = stu.call("/api/agent/session", {"lang": "zh"})
+        zh_switch_id = zh_switch_session["session"]["id"]
+        stu.call("/api/agent/message", {
+            "id": zh_switch_id, "lang": "zh",
+            "text": "宿舍网络断线，路由器亮灯但无法联网"})
+        s, switched_en = stu.call("/api/agent/message", {
+            "id": zh_switch_id, "lang": "en", "action": "self_help"})
+        ok("zh to en changes the next assistant reply",
+           s == 200 and switched_en["lang"] == "en" and
+           not has_zh(switched_en["reply"]))
+        s, en_switch_session = stu.call("/api/agent/session", {"lang": "en"})
+        en_switch_id = en_switch_session["session"]["id"]
+        stu.call("/api/agent/message", {
+            "id": en_switch_id, "lang": "en",
+            "text": "The dorm network is offline although the router lights are on."})
+        s, switched_zh = stu.call("/api/agent/message", {
+            "id": en_switch_id, "lang": "zh", "action": "self_help"})
+        switched_session = stu.call(
+            "/api/agent/session?id=" + en_switch_id)[1]["session"]
+        ok("en to zh changes reply and stored session language",
+           s == 200 and switched_zh["lang"] == "zh" and
+           has_zh(switched_zh["reply"]) and switched_session["lang"] == "zh" and
+           switched_session["history"][-1]["lang"] == "zh")
         s, resolved = stu.call("/api/agent/message", {
-            "id": advice_id, "action": "resolved"})
+            "id": advice_id, "lang": "zh", "action": "resolved"})
         after_count = len(stu.call("/api/tickets")[1]["tickets"])
         ok("resolved advice closes without ticket",
            s == 200 and resolved["stage"] == "resolved" and
            after_count == before_count)
+
+        s, advice_up = stu.call("/api/uploads", {
+            "purpose": "agent",
+            "images": [{"mime": "image/png", "data": encoded}]})
+        advice_image_id = advice_up["uploads"][0]["id"]
+        s, midway_session = stu.call("/api/agent/session", {"lang": "zh"})
+        midway_id = midway_session["session"]["id"]
+        stu.call("/api/agent/message", {
+            "id": midway_id, "lang": "zh",
+            "text": "宿舍网络断线，路由器亮灯但无法联网，重启后仍未恢复",
+            "image_ids": [advice_image_id]})
+        stu.call("/api/agent/message", {
+            "id": midway_id, "lang": "zh", "action": "self_help",
+            "image_ids": [advice_image_id]})
+        stu.call("/api/agent/message", {
+            "id": midway_id, "lang": "zh", "text": "还是没恢复",
+            "image_ids": [advice_image_id]})
+        s, midway_draft = stu.call("/api/agent/message", {
+            "id": midway_id, "lang": "zh", "action": "smart_repair",
+            "image_ids": [advice_image_id]})
+        ok("advice-to-ticket preserves draft and image",
+           s == 200 and midway_draft["ready"] and
+           midway_draft["draft"]["repair_type"] == "network" and
+           midway_draft["draft"]["image_ids"] == [advice_image_id] and
+           "网络断线" in midway_draft["draft"]["description"])
 
         s, draft_session = stu.call("/api/agent/session", {"lang": "zh"})
         draft_id = draft_session["session"]["id"]
@@ -215,13 +301,18 @@ def main():
            s == 200 and safe_advice["stage"] == "advice" and
            safe_advice["solution"]["source"] == "safety_fallback" and
            "拆卸" in safe_advice["self_help"][0])
+        dangerous_text = " ".join(safe_advice["self_help"])
+        ok("dangerous advice contains safety actions only",
+           "远离" in dangerous_text and "联系" in dangerous_text and
+           "打开外壳" not in dangerous_text and "拆开维修" not in dangerous_text)
 
         s, human_session = stu.call("/api/agent/session", {"lang": "en"})
         human_id = human_session["session"]["id"]
         s, human = stu.call("/api/agent/message", {
             "id": human_id, "action": "human"})
         ok("removed human action is rejected",
-           s == 400 and human.get("code") == "bad_agent_action")
+           s == 400 and human.get("code") == "bad_agent_action" and
+           human.get("lang") == "en" and not has_zh(human.get("error")))
         from app import Handler
         legacy = Handler._agent_session_view({
             "id": "legacy", "stage": "human_handoff", "state": "human_handoff",

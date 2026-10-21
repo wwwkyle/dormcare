@@ -281,12 +281,14 @@
         esc(x.value) + '">' + esc(x.label) + "</button>";
     }).join("");
     var routes = data.route_options || [];
-    $("routeActions").hidden = !routes.length;
+    var firstChoice = data.state === "route_choice" || data.stage === "route_choice";
+    $("routeActions").hidden = !firstChoice;
     $("routeSelfHelp").hidden =
       !routes.some(function (x) { return x.id === "self_help" && x.enabled; });
     $("routeRepair").textContent = t("routeRepair");
     var tips = data.self_help || [];
-    $("agentAdvice").hidden = data.stage !== "advice";
+    $("agentAdvice").hidden =
+      data.stage !== "advice" && data.stage !== "no_solution";
     $("selfHelpList").innerHTML = tips.map(function (x) {
       return "<li>" + esc(x) + "</li>";
     }).join("");
@@ -314,6 +316,7 @@
     start.then(function () {
       return DC.post("/api/agent/message", {
         id: agentSessionId,
+        lang: DC.lang,
         text: text,
         image_ids: reportUploads.map(function (x) { return x.id; })
       });
@@ -325,6 +328,7 @@
       });
       conversation.push({
         role: "assistant",
+        lang: res.data.lang || DC.lang,
         text: (res.data.safety_warning ? "⚠ " + res.data.safety_warning + "\n" : "") +
           res.data.reply
       });
@@ -351,11 +355,12 @@
        $("routeRepair"));
     DC.busy(button, true);
     DC.post("/api/agent/message", {
-      id: agentSessionId, action: action,
+      id: agentSessionId, action: action, lang: DC.lang,
       image_ids: reportUploads.map(function (x) { return x.id; })
     }).then(function (res) {
       if (!res.ok) throw new Error(DC.errorText(res.data));
-      conversation.push({ role: "assistant", text: res.data.reply || "" });
+      conversation.push({ role: "assistant", lang: res.data.lang || DC.lang,
+                          text: res.data.reply || "" });
       renderConversation();
       renderAgentResult(res.data);
       if (res.data.draft && (res.data.ready || res.data.stage === "manual")) {
@@ -372,6 +377,7 @@
     var body = extra || {};
     body.id = agentSessionId;
     body.event = event;
+    body.lang = DC.lang;
     DC.post("/api/agent/event", body).catch(function () {});
   }
 
@@ -380,7 +386,7 @@
     window.clearTimeout(draftSaveTimer);
     draftSaveTimer = window.setTimeout(function () {
       DC.post("/api/agent/message", {
-        id: agentSessionId, action: "save_draft",
+        id: agentSessionId, action: "save_draft", lang: DC.lang,
         draft: {
           title: $("fTitle").value.trim(), repair_type: selType,
           priority: selPriority, description: $("fDesc").value.trim(),
@@ -398,7 +404,8 @@
     var id = "";
     try { id = localStorage.getItem(SESSION_KEY) || ""; } catch (ignore) {}
     if (!id) return Promise.resolve();
-    return DC.api("/api/agent/session?id=" + encodeURIComponent(id)).then(function (res) {
+    return DC.api("/api/agent/session?id=" + encodeURIComponent(id) +
+      "&lang=" + encodeURIComponent(DC.lang)).then(function (res) {
       if (!res.ok || !res.data.session || res.data.session.ticket_id ||
           res.data.session.resolved) {
         try { localStorage.removeItem(SESSION_KEY); } catch (ignore) {}
@@ -407,7 +414,7 @@
       var s = res.data.session;
       agentSessionId = s.id;
       conversation = (s.history || []).map(function (x) {
-        return { role: x.role, text: x.content || "" };
+        return { role: x.role, text: x.content || "", lang: x.lang || "zh" };
       });
       reportUploads = (s.image_ids || []).map(function (imageId) {
         return { id: imageId, url: "/api/uploads/" + encodeURIComponent(imageId) };
@@ -428,7 +435,7 @@
     if (!agentSessionId || !lastAgentDraft) return;
     $("agentConfirm").hidden = true;
     DC.post("/api/agent/message", {
-      id: agentSessionId, action: "create_draft",
+      id: agentSessionId, action: "create_draft", lang: DC.lang,
       image_ids: reportUploads.map(function (x) { return x.id; })
     }).then(function (res) {
       if (!res.ok) throw new Error(DC.errorText(res.data));
@@ -592,7 +599,8 @@
       var b = e.target.closest("[data-question-option]");
       if (!b || !agentSessionId) return;
       DC.post("/api/agent/message", {
-        id: agentSessionId, option: b.getAttribute("data-question-option"),
+        id: agentSessionId, lang: DC.lang,
+        option: b.getAttribute("data-question-option"),
         image_ids: reportUploads.map(function (x) { return x.id; })
       }).then(function (res) {
         if (!res.ok) throw new Error(DC.errorText(res.data));
@@ -605,7 +613,9 @@
     });
     $("manualOpen").addEventListener("click", function () {
       if (agentSessionId) {
-        DC.post("/api/agent/message", { id: agentSessionId, action: "manual" })
+        DC.post("/api/agent/message", {
+          id: agentSessionId, action: "manual", lang: DC.lang
+        })
           .then(function (res) {
             if (res.ok && res.data.draft) applyAgentDraft(res.data.draft, true);
           });
@@ -697,7 +707,8 @@
       DC.busy($("agentConfirm"), true);
       setStage("confirm");
       DC.post("/api/agent/confirm", {
-        id: agentSessionId, date: $("fDate").value, slots: pairs,
+        id: agentSessionId, lang: DC.lang,
+        date: $("fDate").value, slots: pairs,
         contact: $("fContact").value.trim(),
         title: $("fTitle").value.trim(),
         repair_type: selType, priority: selPriority,

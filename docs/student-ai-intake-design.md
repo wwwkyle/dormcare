@@ -18,11 +18,12 @@ flowchart TD
   D -- 漏水/漏电/燃气/火灾/被困 --> E[安全警示\nB推荐且A保留] --> S
   D -- 普通 --> S
   S -->|A 提供维修建议| K{知识库命中?}
-  K -- 命中 --> P[步骤方案/可选配图]
+  K -- 命中 --> P[多轮步骤建议/可继续追问]
   K -- 空库或无命中 --> X[暂无合适方案] --> B
   K -- 安全规则 fallback --> F[明确标注 fallback 步骤]
+  P --> P
   P --> Z{解决了吗?}
-  F --> Z
+  F --> P
   Z -- 已解决 --> DONE[结束且不建单]
   Z -- 未解决 --> B[智能报修]
   S -->|B 生成工单| B
@@ -68,8 +69,9 @@ flowchart TD
 ┌ 自助维修（可随时生成工单）──────────┐
 │ 空/无命中: 暂无合适方案 [智能报修]   │
 │ fallback: 非知识库命中·安全规则建议   │
-│ 1 [可选图] 步骤                       │
-│ 2 [可选图] 步骤                       │
+│ 1 [可选图] 保守步骤                    │
+│ 2 [可选图] 不确定即停止等待师傅        │
+│ [继续追问…………] [发送]                │
 │ 问题解决了吗? [已解决] [未解决报修]   │
 └ 加载/错误不阻断 [生成工单]            ┘
 成功:无工单结束；紧急仅给断电/关阀/撤离/联系紧急人员等保守建议。
@@ -121,7 +123,7 @@ English follows the same two-sentence structure: identify/ask first, action and 
 
 ```text
 describe -> recognizing -> route_choice
-route -> self_help -> resolved | smart_repair
+route -> self_help -> self_help(多轮) | resolved | smart_repair
 route -> smart_repair -> clarify | draft
 任意非终态 <-> manual
 draft -> preview -> confirming -> ticket_created
@@ -129,7 +131,11 @@ confirming -> preview(error) | ticket_created(idempotent)
 任意请求 -> offline/upload_error/auth_expired；恢复后回原状态
 ```
 
-服务端 `agent_sessions` 是唯一事实源，保存 `history/draft/state/active_route/image_ids`；浏览器 `localStorage` 只存不含敏感信息的 session id。刷新后鉴权读取 session，校验归属并恢复；不存在、已完成、跨账号或登录过期时清除本地 id。编辑表单 350ms 防抖同步，冲突以最近一次服务端成功保存为准。
+服务端 `agent_sessions` 是唯一事实源，保存 `lang/history/draft/state/active_route/image_ids`；
+assistant history 同时保存该轮 `lang`。旧 session 缺少 `lang` 时按 `zh` 读取。浏览器
+`localStorage` 只存不含敏感信息的 session id。刷新后鉴权读取 session，校验归属并恢复；
+不存在、已完成、跨账号或登录过期时清除本地 id。编辑表单 350ms 防抖同步，冲突以最近一次
+服务端成功保存为准。
 
 ## 接口与 JSON
 
@@ -142,14 +148,14 @@ confirming -> preview(error) | ticket_created(idempotent)
 消息请求：
 
 ```json
-{"id":"A…","text":"插座冒火花","image_ids":["F…"],"transcript":false}
+{"id":"A…","lang":"zh","text":"插座冒火花","image_ids":["F…"],"transcript":false}
 ```
 
 识别/方案响应（旧字段 `stage/ready/missing/self_help` 同时保留）：
 
 ```json
 {
-  "contract_version":2,"state":"route_choice","response_mode":"complete",
+  "contract_version":2,"lang":"zh","state":"route_choice","response_mode":"complete",
   "detected":{"repair_type":"power","priority":"urgent"},
   "confidence":"high","emergency":true,
   "route_options":[{"id":"self_help","enabled":true,"recommended":false},{"id":"smart_repair","enabled":true,"recommended":true}],
@@ -184,6 +190,8 @@ confirming -> preview(error) | ticket_created(idempotent)
 ## 边界与安全
 
 - 模型超时、非 JSON、字段非法：最多重试后规则兜底；不把 API key、故障全文或图片写日志。
+- 页面每次创建、发送、选路、结束和确认都显式发送当前 `DC.lang`；服务端立即更新 session。
+  新回复严格使用当前选择语言，模型错语种时回退规则结果，不依赖 `Accept-Language`。
 - 紧急词优先于模型结论；建议分支只返回断电、关阀、撤离和联系紧急人员等保守步骤。
 - 图片必须属于当前账号、未绑定其他工单且用途合法；session、草稿、确认均校验账号。
 - 上传部分失败保留文本与成功项；断网不清输入；401 走统一登录过期处理。

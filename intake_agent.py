@@ -5,13 +5,55 @@ import os
 import time
 
 from agent_prompts import INTAKE_AGENT_PROMPT
-from agent_tools import build_draft, validate_draft
+from agent_tools import (build_draft, confidence_for, next_question_for,
+                         validate_draft)
 from ai_agents import SELF_HELP, call_model
 
 
 SAFE_SELF_HELP_TYPES = {
     "desk", "chair", "wardrobe", "network", "curtain", "door",
 }
+
+KB_STATUS = "empty"
+
+
+def _enrich(result, session, draft, lang):
+    """Add the stable v2 contract while preserving every legacy field."""
+    emergency = bool(result.get("safety_warning") or
+                     draft.get("priority") == "urgent")
+    question = None if emergency else next_question_for(
+        session.get("history") or [], draft, lang)
+    if result.get("stage") == "follow_up" and question:
+        result["missing"] = [question["text"]]
+    elif result.get("stage") == "follow_up":
+        result["missing"] = (result.get("missing") or [])[:1]
+    steps = [{"text": tip, "image_url": None}
+             for tip in (result.get("self_help") or [])]
+    result.update({
+        "contract_version": 2,
+        "emergency": emergency,
+        "confidence": confidence_for(session.get("history") or [], draft),
+        "kb_status": KB_STATUS,
+        "route_options": ([{
+            "id": "smart_repair", "enabled": True, "recommended": True,
+        }] if emergency else [
+            {"id": "self_help", "enabled": True,
+             "recommended": result.get("stage") == "advice"},
+            {"id": "smart_repair", "enabled": True,
+             "recommended": result.get("stage") != "advice"},
+        ]),
+        "solution": ({
+            "source": "fallback", "safety_reviewed": True, "steps": steps,
+        } if steps else None),
+        "next_question": question,
+        "question_options": (question.get("options", []) if question else []),
+        "state": result.get("stage", "follow_up"),
+        "response_mode": "complete",
+    })
+    # An in-progress server draft is recoverable even before it is confirmable.
+    if result.get("draft") is None and result.get("stage") in ("follow_up", "advice"):
+        result["draft"] = draft
+    return result
 
 
 def _questions(lang):
@@ -72,9 +114,13 @@ def respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
     image_ids = session.get("image_ids") or []
     local_draft, enough, warning = build_draft(history, image_ids, user, lang)
     if force_draft:
-        return _fallback(local_draft, enough, warning, lang, True)
+        return _enrich(
+            _fallback(local_draft, enough, warning, lang, True),
+            session, local_draft, lang)
     if not api_key:
-        return _fallback(local_draft, enough, warning, lang, force_draft)
+        return _enrich(
+            _fallback(local_draft, enough, warning, lang, force_draft),
+            session, local_draft, lang)
 
     messages = [{"role": "system", "content": INTAKE_AGENT_PROMPT}]
     messages.extend(_model_messages(history, store, upload_dir))
@@ -96,7 +142,7 @@ def respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
                         draft.get("priority") in ("normal", "low")):
                     result = _advice(draft, lang)
                     result["source"] = "model"
-                    return result
+                    return _enrich(result, session, draft, lang)
                 data.update({
                     "stage": "draft", "complete": True,
                     "detected": {
@@ -117,13 +163,13 @@ def respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
                 })
             data["source"] = "model"
             data["safety_warning"] = data.get("safety_warning") or warning
-            return data
+            return _enrich(data, session, draft or local_draft, lang)
         except Exception:
             if attempt == 0:
                 time.sleep(0.15)
     result = _fallback(local_draft, enough, warning, lang, force_draft)
     result["source"] = "fallback_after_model_error"
-    return result
+    return _enrich(result, session, local_draft, lang)
 
 
 def _fallback(draft, enough, warning, lang, force_draft=False):

@@ -28,6 +28,8 @@
   var publicArea = false;
   var reportUploads = [];
   var agentSessionId = "";
+  var SESSION_KEY = "dormcare.agentSession";
+  var draftSaveTimer = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -262,13 +264,28 @@
       "<span>" + esc(t("aiClass")) + "：" +
       esc(repairName(detected.repair_type || "")) + "</span>" +
       "<span>" + esc(t("aiPriority")) + "：" +
-      esc(priLabel(detected.priority || "normal")) + "</span>";
+      esc(priLabel(detected.priority || "normal")) + "</span>" +
+      "<span>" + esc(t("confidenceLabel")) + "：" +
+      esc(data.confidence || "—") + "</span>" +
+      (data.kb_status === "empty" ? "<span>" + esc(t("kbEmpty")) + "</span>" : "");
     var missing = data.missing || [];
     $("agentMissing").hidden = !missing.length;
     $("agentMissing").innerHTML = missing.length
       ? "<strong>" + esc(t("missingTitle")) + "</strong><ul>" +
         missing.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") +
         "</ul>" : "";
+    var options = data.question_options || [];
+    $("questionOptions").hidden = !options.length;
+    $("questionOptions").innerHTML = options.map(function (x) {
+      return '<button type="button" class="btn ghost" data-question-option="' +
+        esc(x.value) + '">' + esc(x.label) + "</button>";
+    }).join("");
+    var routes = data.route_options || [];
+    $("routeActions").hidden = !routes.length;
+    $("routeSelfHelp").hidden = !!data.emergency ||
+      !routes.some(function (x) { return x.id === "self_help" && x.enabled; });
+    $("routeRepair").textContent = data.emergency ? t("emergencyRepair") : t("routeRepair");
+    $("emergencyRepair").hidden = !data.emergency;
     var tips = data.self_help || [];
     $("agentAdvice").hidden = data.stage !== "advice";
     $("selfHelpList").innerHTML = tips.map(function (x) {
@@ -314,8 +331,9 @@
       });
       renderConversation();
       renderAgentResult(res.data);
-      applyAgentDraft(res.data.draft);
+      if (res.data.ready) applyAgentDraft(res.data.draft);
       $("intakeText").value = "";
+      try { localStorage.setItem(SESSION_KEY, agentSessionId); } catch (ignore) {}
       DC.setMsg($("agentMsg"), "", "");
     }).catch(function (e) {
       conversation.push({ role: "assistant", text: e.message || t("err_network") });
@@ -329,7 +347,9 @@
 
   function agentAction(action) {
     if (!agentSessionId) return;
-    var button = action === "resolved" ? $("agentResolved") : $("agentNeedRepair");
+    var button = action === "resolved" ? $("agentResolved") :
+      (action === "self_help" ? $("routeSelfHelp") :
+       (action === "human" ? $("humanHelp") : $("routeRepair")));
     DC.busy(button, true);
     DC.post("/api/agent/message", {
       id: agentSessionId, action: action,
@@ -339,11 +359,70 @@
       conversation.push({ role: "assistant", text: res.data.reply || "" });
       renderConversation();
       renderAgentResult(res.data);
-      applyAgentDraft(res.data.draft);
+      if (res.data.draft && (res.data.ready || res.data.stage === "manual")) {
+        applyAgentDraft(res.data.draft);
+      }
     }).catch(function (e) {
       DC.setMsg($("agentMsg"), "", "err");
       $("agentMsg").textContent = e.message;
     }).then(function () { DC.busy(button, false); });
+  }
+
+  function track(event, extra) {
+    if (!agentSessionId) return;
+    var body = extra || {};
+    body.id = agentSessionId;
+    body.event = event;
+    DC.post("/api/agent/event", body).catch(function () {});
+  }
+
+  function saveServerDraft() {
+    if (!agentSessionId || $("draftSection").hidden) return;
+    window.clearTimeout(draftSaveTimer);
+    draftSaveTimer = window.setTimeout(function () {
+      DC.post("/api/agent/message", {
+        id: agentSessionId, action: "save_draft",
+        draft: {
+          title: $("fTitle").value.trim(), repair_type: selType,
+          priority: selPriority, description: $("fDesc").value.trim(),
+          expected_date: $("fDate").value, slots: selectedPairs(),
+          contact: $("fContact").value.trim(), public_area: publicArea,
+          college: publicArea ? $("fCollege").value : "",
+          block: publicArea ? $("fBlock").value : "",
+          dorm: publicArea ? $("fDorm").value.trim() : ""
+        }
+      }).then(function (res) { if (res.ok) track("draft_saved"); });
+    }, 350);
+  }
+
+  function restoreAgentSession() {
+    var id = "";
+    try { id = localStorage.getItem(SESSION_KEY) || ""; } catch (ignore) {}
+    if (!id) return Promise.resolve();
+    return DC.api("/api/agent/session?id=" + encodeURIComponent(id)).then(function (res) {
+      if (!res.ok || !res.data.session || res.data.session.ticket_id ||
+          res.data.session.resolved) {
+        try { localStorage.removeItem(SESSION_KEY); } catch (ignore) {}
+        return;
+      }
+      var s = res.data.session;
+      agentSessionId = s.id;
+      conversation = (s.history || []).map(function (x) {
+        return { role: x.role, text: x.content || "" };
+      });
+      reportUploads = (s.image_ids || []).map(function (imageId) {
+        return { id: imageId, url: "/api/uploads/" + encodeURIComponent(imageId) };
+      });
+      renderPhotos();
+      renderConversation();
+      renderAgentResult(s);
+      if (s.draft && (s.ready || s.stage === "manual")) applyAgentDraft(s.draft, true);
+      DC.setMsg($("agentMsg"), "", "ok");
+      $("agentMsg").textContent = t("draftRestored");
+      track("draft_restored");
+    }).catch(function () {
+      try { localStorage.removeItem(SESSION_KEY); } catch (ignore) {}
+    });
   }
 
   function refreshDraftImages() {
@@ -404,7 +483,12 @@
       payload.dorm = $("fDorm").value.trim();
     }
 
-    DC.post("/api/tickets", payload).then(function (res) {
+    var endpoint = "/api/tickets";
+    if (agentSessionId) {
+      endpoint = "/api/agent/confirm";
+      payload.id = agentSessionId;
+    }
+    DC.post(endpoint, payload).then(function (res) {
       DC.busy($("submitBtn"), false);
       if (!res.ok) {
         msg.dataset.code = "";
@@ -417,6 +501,7 @@
       // The new ticket now lives on the records page, so send them there
       // rather than leaving them on a form they have already submitted.
       DC.setMsg(msg, "submitOkRedirect", "ok");
+      try { localStorage.removeItem(SESSION_KEY); } catch (ignore) {}
       window.setTimeout(function () { window.location.replace("/records.html"); }, 1400);
       DC.refreshHealth();
     }).catch(function () {
@@ -502,7 +587,32 @@
     $("agentSend").addEventListener("click", sendAgentMessage);
     $("agentResolved").addEventListener("click", function () { agentAction("resolved"); });
     $("agentNeedRepair").addEventListener("click", function () { agentAction("create_draft"); });
+    $("routeSelfHelp").addEventListener("click", function () { agentAction("self_help"); });
+    $("routeRepair").addEventListener("click", function () { agentAction("smart_repair"); });
+    $("emergencyRepair").addEventListener("click", function () { agentAction("smart_repair"); });
+    $("humanHelp").addEventListener("click", function () { agentAction("human"); });
+    $("questionOptions").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-question-option]");
+      if (!b || !agentSessionId) return;
+      DC.post("/api/agent/message", {
+        id: agentSessionId, option: b.getAttribute("data-question-option"),
+        image_ids: reportUploads.map(function (x) { return x.id; })
+      }).then(function (res) {
+        if (!res.ok) throw new Error(DC.errorText(res.data));
+        renderAgentResult(res.data);
+        if (res.data.ready) applyAgentDraft(res.data.draft);
+        track("question_answered");
+      }).catch(function (e2) {
+        DC.setMsg($("agentMsg"), "", "err"); $("agentMsg").textContent = e2.message;
+      });
+    });
     $("manualOpen").addEventListener("click", function () {
+      if (agentSessionId) {
+        DC.post("/api/agent/message", { id: agentSessionId, action: "manual" })
+          .then(function (res) {
+            if (res.ok && res.data.draft) applyAgentDraft(res.data.draft, true);
+          });
+      }
       $("draftSection").hidden = false;
       $("formAiTag").hidden = true;
       $("agentDraft").hidden = true;
@@ -520,6 +630,9 @@
       $("agentLog").hidden = true;
       $("agentResult").hidden = true;
       $("agentAdvice").hidden = true;
+      $("routeActions").hidden = true;
+      $("questionOptions").hidden = true;
+      $("emergencyRepair").hidden = true;
       $("agentDraft").hidden = true;
       $("agentConfirm").hidden = true;
       $("submitBtn").hidden = false;
@@ -530,6 +643,7 @@
       lastAgentDraft = null;
       reportUploads = [];
       agentSessionId = "";
+      try { localStorage.removeItem(SESSION_KEY); } catch (ignore) {}
       setStage("describe");
       renderPhotos();
       DC.setMsg($("agentMsg"), "", "");
@@ -537,6 +651,8 @@
     });
 
     $("submitBtn").addEventListener("click", submitTicket);
+    $("draftSection").addEventListener("input", saveServerDraft);
+    $("draftSection").addEventListener("change", saveServerDraft);
 
     $("photoInput").addEventListener("change", function () {
       uploadFiles(this.files, "agent").then(function (items) {
@@ -596,6 +712,8 @@
         dorm: publicArea ? $("fDorm").value.trim() : ""
       }).then(function (res) {
         if (!res.ok) throw new Error(DC.errorText(res.data));
+        track("confirm_succeeded");
+        try { localStorage.removeItem(SESSION_KEY); } catch (ignore) {}
         window.location.replace("/records.html");
       }).catch(function (e) {
         DC.busy($("agentConfirm"), false);
@@ -637,6 +755,7 @@
       renderDateOptions();
       renderSlots();
       renderAddress(user);
+      return restoreAgentSession();
     });
   }, "student");
 })(window.DC);

@@ -470,6 +470,11 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .agent-advice h3 { margin: 0 0 7px; font-size: 14px; color: #276e48; }
 .agent-advice ol { margin: 0; padding-left: 20px; }
 .agent-advice .row { margin-top: 11px; }
+.route-actions, .question-options {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
+}
+.route-actions[hidden], .question-options[hidden] { display: none; }
+.question-options .btn { min-height: 40px; }
 .upload-btn { display: inline-flex; align-items: center; }
 .upload-btn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .draft-card { border-top: 3px solid var(--brand); }
@@ -885,4 +890,5 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .intake-steps { grid-template-columns: repeat(2, 1fr); }
   .composer-tools .hint { flex-basis: 100%; }
   .agent-advice .btn, .draft-card .btn.big { width: 100%; }
+  .route-actions .btn, .question-options .btn { flex: 1 1 44%; min-height: 44px; }
 }

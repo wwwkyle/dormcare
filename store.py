@@ -48,9 +48,9 @@ class Store:
             if not isinstance(self._data, dict):
                 self._data = {"tickets": [], "workers": [], "plans": [],
                               "users": [], "sessions": [], "uploads": [],
-                              "agent_sessions": []}
+                              "agent_sessions": [], "agent_events": []}
             for key in ("tickets", "workers", "plans", "users", "sessions",
-                        "uploads", "agent_sessions"):
+                        "uploads", "agent_sessions", "agent_events"):
                 self._data.setdefault(key, [])
             return self._data
 
@@ -165,6 +165,16 @@ class Store:
             if changed:
                 self.save()
             return changed
+
+    def add_agent_event(self, event):
+        """Persist a privacy-minimal product event; never store free text."""
+        with _lock:
+            event.setdefault("id", "E" + uuid.uuid4().hex.upper())
+            event.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
+            self._data["agent_events"].append(event)
+            self._data["agent_events"] = self._data["agent_events"][-10000:]
+            self.save()
+            return event
 
     # ---- workers --------------------------------------------------------- #
 

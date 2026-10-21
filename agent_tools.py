@@ -5,8 +5,9 @@ from ai_agents import fallback_classify
 from config import REPAIR_BY_ID
 
 HIGH_RISK = ("漏电", "触电", "火花", "燃气", "煤气", "冒烟", "起火", "大面积漏水",
+             "困住", "被困", "锁在", "无法逃生",
              "electrical leak", "electric shock", "gas leak", "smoke", "fire",
-             "sparking", "major flood", "flooding")
+             "sparking", "major flood", "flooding", "trapped", "locked in")
 
 
 def build_draft(history, image_ids, user, lang="zh"):
@@ -25,7 +26,7 @@ def build_draft(history, image_ids, user, lang="zh"):
         classified["repair_type"] = "network"
     location = " ".join(x for x in (
         user.get("block", ""), user.get("dorm", "")) if x)
-    enough = len(text) >= (12 if lang == "zh" else 30)
+    enough = risky or len(text) >= (12 if lang == "zh" else 30)
     draft = {
         "title": text.splitlines()[0][:60] if text else "",
         "repair_type": classified["repair_type"],
@@ -56,6 +57,41 @@ def build_draft(history, image_ids, user, lang="zh"):
             if gas_or_water:
                 warning += " Close the main valve only if it is safely reachable away from the hazard."
     return draft, enough, warning
+
+
+def confidence_for(history, draft):
+    text = " ".join(str(x.get("content") or "") for x in history
+                    if x.get("role") == "user").strip()
+    if not text:
+        return "low"
+    if draft.get("priority") == "urgent" or len(text) >= 24:
+        return "high"
+    return "medium"
+
+
+def next_question_for(history, draft, lang="zh"):
+    """Return exactly one highest-priority question and safe click choices."""
+    text = " ".join(str(x.get("content") or "") for x in history
+                    if x.get("role") == "user").strip()
+    if len(text) < (12 if lang == "zh" else 30):
+        return {
+            "field": "phenomenon",
+            "text": ("请选择最接近的故障现象，或补充一句具体表现。"
+                     if lang == "zh" else
+                     "Choose the closest symptom, or briefly describe what happens."),
+            "options": ([
+                {"value": "not_working", "label": "完全无法使用"},
+                {"value": "intermittent", "label": "时好时坏"},
+                {"value": "leaking", "label": "漏水 / 渗漏"},
+                {"value": "noise", "label": "异响 / 异味"},
+            ] if lang == "zh" else [
+                {"value": "not_working", "label": "Not working"},
+                {"value": "intermittent", "label": "Intermittent"},
+                {"value": "leaking", "label": "Leaking"},
+                {"value": "noise", "label": "Noise / smell"},
+            ]),
+        }
+    return None
 
 
 def validate_draft(draft):

@@ -87,7 +87,16 @@ def main():
         s, agent = stu.call("/api/agent/session", {"lang": "zh"})
         aid = agent["session"]["id"]
         s, first = stu.call("/api/agent/message", {"id": aid, "text": "插座坏了"})
-        ok("agent asks follow-up", s == 200 and not first["ready"])
+        ok("ordinary routing exposes stable v2 fields",
+           s == 200 and first["contract_version"] == 2 and
+           len(first["route_options"]) == 2 and first["response_mode"] == "complete")
+        ok("agent asks exactly one question with options",
+           not first["ready"] and len(first["missing"]) == 1 and
+           first["next_question"] and first["question_options"])
+        s, bad_option = stu.call("/api/agent/message", {
+            "id": aid, "option": "invented"})
+        ok("server rejects invented question option",
+           s == 400 and bad_option.get("code") == "bad_question_option")
         s, other_agent = other.call("/api/agent/session", {"lang": "zh"})
         other_aid = other_agent["session"]["id"]
         s, forbidden_image = other.call("/api/agent/message", {
@@ -100,6 +109,13 @@ def main():
             "image_ids": [agent_image_id]})
         ok("agent produces urgent draft", s == 200 and second["ready"] and
            second["draft"]["priority"] == "urgent" and second["safety_warning"])
+        ok("emergency forces smart repair route",
+           second["emergency"] and
+           [x["id"] for x in second["route_options"]] == ["smart_repair"])
+        s, blocked_self_help = stu.call("/api/agent/message", {
+            "id": aid, "action": "self_help"})
+        ok("emergency self-help is blocked",
+           s == 409 and blocked_self_help.get("code") == "emergency_requires_report")
         ok("agent image retained in draft",
            second["draft"]["image_ids"] == [agent_image_id])
         session_view = stu.call("/api/agent/session?id=" + aid)[1]["session"]
@@ -113,6 +129,12 @@ def main():
         ok("confirmed draft creates ticket with image", s == 200 and
            confirmed.get("ticket", {}).get("id") and
            confirmed["ticket"]["image_ids"] == [agent_image_id])
+        ticket_id = confirmed["ticket"]["id"]
+        s, duplicate = stu.call("/api/agent/confirm", {
+            "id": aid, "date": day, "slots": [[2, 8]]})
+        ok("duplicate confirmation is idempotent",
+           s == 200 and duplicate.get("idempotent") and
+           duplicate["ticket"]["id"] == ticket_id)
 
         before_count = len(stu.call("/api/tickets")[1]["tickets"])
         s, advice_session = stu.call("/api/agent/session", {"lang": "zh"})
@@ -123,6 +145,20 @@ def main():
         ok("safe low-risk issue returns advice branch",
            s == 200 and advice["stage"] == "advice" and
            advice["self_help"] and not advice["ready"])
+        ok("empty KB never masquerades as a hit",
+           advice["kb_status"] == "empty" and
+           advice["solution"]["source"] == "fallback" and
+           advice["solution"]["safety_reviewed"])
+        s, no_hit_session = stu.call("/api/agent/session", {"lang": "zh"})
+        no_hit_id = no_hit_session["session"]["id"]
+        stu.call("/api/agent/message", {
+            "id": no_hit_id, "text": "宿舍插座完全没有电，其他插座正常，外观没有异常"})
+        s, no_hit = stu.call("/api/agent/message", {
+            "id": no_hit_id, "action": "self_help"})
+        ok("KB no-hit explicitly routes back to ticket creation",
+           s == 200 and no_hit["stage"] == "no_solution" and
+           no_hit["kb_status"] == "empty" and no_hit["solution"] is None and
+           no_hit["draft"]["repair_type"] == "power")
         s, resolved = stu.call("/api/agent/message", {
             "id": advice_id, "action": "resolved"})
         after_count = len(stu.call("/api/tickets")[1]["tickets"])
@@ -140,6 +176,43 @@ def main():
         ok("advice can explicitly generate editable draft",
            s == 200 and requested["stage"] == "draft" and
            requested["ready"] and requested["draft"]["repair_type"] == "network")
+
+        s, switch_session = stu.call("/api/agent/session", {"lang": "zh"})
+        switch_id = switch_session["session"]["id"]
+        stu.call("/api/agent/message", {"id": switch_id, "text": "宿舍椅子一直下沉，今天开始无法正常坐"})
+        before_switch = stu.call("/api/agent/session?id=" + switch_id)[1]["session"]["draft"]
+        s, manual = stu.call("/api/agent/message", {
+            "id": switch_id, "action": "manual"})
+        ok("manual switch carries server draft",
+           s == 200 and manual["stage"] == "manual" and
+           manual["draft"]["description"] == before_switch["description"])
+        s, saved = stu.call("/api/agent/message", {
+            "id": switch_id, "action": "save_draft",
+            "draft": {"repair_type": "chair", "priority": "normal",
+                      "title": "椅子下沉（手写）"}})
+        restored = stu.call("/api/agent/session?id=" + switch_id)[1]["session"]
+        ok("refresh restores latest server draft",
+           s == 200 and saved["saved"] and
+           restored["draft"]["title"] == "椅子下沉（手写）")
+        s, back_to_repair = stu.call("/api/agent/message", {
+            "id": switch_id, "action": "smart_repair"})
+        ok("route switching preserves edited draft fields",
+           s == 200 and back_to_repair["draft"]["title"] == "椅子下沉（手写）")
+
+        s, human_session = stu.call("/api/agent/session", {"lang": "en"})
+        human_id = human_session["session"]["id"]
+        s, human = stu.call("/api/agent/message", {
+            "id": human_id, "action": "human"})
+        ok("human handoff is explicit placeholder state",
+           s == 200 and human["agent_status"] == "human_requested" and
+           human["stage"] == "human_handoff" and "not connected" in human["reply"])
+
+        s, fallback_session = stu.call("/api/agent/session", {"lang": "zh"})
+        fallback_id = fallback_session["session"]["id"]
+        s, fallback = stu.call("/api/agent/message", {
+            "id": fallback_id, "text": "宿舍门锁卡住，钥匙可以转动但门打不开，今晚开始"})
+        ok("no-model deployment uses deterministic fallback",
+           s == 200 and fallback["source"] == "rules")
         print("ALL MULTIMODAL TESTS PASSED")
         return 0
     finally:

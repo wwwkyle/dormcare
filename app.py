@@ -1208,7 +1208,10 @@ class Handler(BaseHTTPRequestHandler):
         return {k: session.get(k) for k in (
             "id", "created_at", "updated_at", "history", "image_ids",
             "draft", "ready", "stage", "detected", "missing", "self_help",
-            "safety_warning", "resolved", "ticket_id")}
+            "safety_warning", "resolved", "ticket_id", "route_options",
+            "emergency", "confidence", "kb_status", "solution",
+            "next_question", "question_options", "state", "response_mode",
+            "active_route", "agent_status")}
 
     # ---- POST ------------------------------------------------------------- #
 
@@ -1260,6 +1263,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/agent/session": self._api_agent_session,
             "/api/agent/message": self._api_agent_message,
             "/api/agent/confirm": self._api_agent_confirm,
+            "/api/agent/event": self._api_agent_event,
             "/api/tickets": self._api_create_ticket,
             "/api/tickets/status": self._api_ticket_status,
             "/api/tickets/feedback": self._api_ticket_feedback,
@@ -1624,6 +1628,11 @@ class Handler(BaseHTTPRequestHandler):
             "image_ids": [], "draft": None, "ready": False,
             "stage": "describe", "detected": {}, "missing": [], "self_help": [],
             "safety_warning": "", "resolved": False, "ticket_id": "",
+            "route_options": [], "emergency": False, "confidence": "low",
+            "kb_status": "empty", "solution": None, "next_question": None,
+            "question_options": [], "state": "describe",
+            "response_mode": "complete", "active_route": "",
+            "agent_status": "ai",
         })
         self._json(200, {"ok": True, "session": self._agent_session_view(session)})
 
@@ -1642,6 +1651,58 @@ class Handler(BaseHTTPRequestHandler):
             self._err(409, "already_confirmed", "This session already created a ticket.")
             return
         action = body.get("action") or ""
+        allowed_actions = ("", "resolved", "create_draft", "self_help",
+                           "smart_repair", "manual", "human", "save_draft")
+        if action not in allowed_actions:
+            self._err(400, "bad_agent_action", "Unsupported intake action.")
+            return
+        if action == "human":
+            reply = ("已记录转人工请求。当前未接入在线客服，请立即联系宿管或物业值班电话；你的草稿会保留。"
+                     if session.get("lang") == "zh" else
+                     "Human help was requested. Live chat is not connected; contact the residence or property duty line. Your draft is saved.")
+            session = STORE.update_agent_session(session["id"], {
+                "stage": "human_handoff", "state": "human_handoff",
+                "agent_status": "human_requested",
+            })
+            STORE.add_agent_event({"session_id": session["id"],
+                                   "event": "human_requested",
+                                   "state": "human_handoff"})
+            self._json(200, {"ok": True, "reply": reply,
+                             **self._agent_session_view(session)})
+            return
+        if action == "manual":
+            session = STORE.update_agent_session(session["id"], {
+                "stage": "manual", "state": "manual",
+                "active_route": "manual",
+            })
+            self._json(200, {"ok": True,
+                             "reply": ("已切换为手写工单，现有草稿已带入。"
+                                       if session.get("lang") == "zh" else
+                                       "Manual entry is open with your saved draft."),
+                             **self._agent_session_view(session)})
+            return
+        if action == "save_draft":
+            patch = body.get("draft") or {}
+            if not isinstance(patch, dict):
+                self._err(400, "bad_draft", "Draft must be an object.")
+                return
+            allowed = ("title", "repair_type", "description", "priority",
+                       "expected_date", "slots", "contact", "public_area",
+                       "college", "block", "dorm")
+            draft = dict(session.get("draft") or {})
+            for key in allowed:
+                if key in patch:
+                    draft[key] = patch[key]
+            if draft.get("repair_type") not in REPAIR_BY_ID:
+                self._err(400, "bad_type", "Unknown repair type.")
+                return
+            if draft.get("priority") not in ("urgent", "high", "normal", "low"):
+                self._err(400, "bad_priority", "Unknown priority.")
+                return
+            session = STORE.update_agent_session(session["id"], {"draft": draft})
+            self._json(200, {"ok": True, "saved": True,
+                             "session": self._agent_session_view(session)})
+            return
         if action == "resolved":
             session = STORE.update_agent_session(session["id"], {
                 "stage": "resolved", "resolved": True, "ready": False,
@@ -1659,14 +1720,27 @@ class Handler(BaseHTTPRequestHandler):
         if session.get("resolved"):
             self._err(409, "session_resolved", "This intake session is closed.")
             return
-        force_draft = action == "create_draft"
+        if action == "self_help" and session.get("emergency"):
+            self._err(409, "emergency_requires_report",
+                      "Emergency cases must use immediate repair reporting.")
+            return
+        force_draft = action in ("create_draft", "smart_repair")
         text = (body.get("text") or "").strip()[:2000]
+        selected = body.get("option")
+        if selected is not None:
+            valid_options = session.get("question_options") or []
+            match = next((x for x in valid_options
+                          if isinstance(x, dict) and x.get("value") == selected), None)
+            if not match:
+                self._err(400, "bad_question_option", "That option is not valid.")
+                return
+            text = str(match.get("label") or selected)[:200]
         image_ids = (body.get("image_ids") if "image_ids" in body
                      else session.get("image_ids") or [])
         if not isinstance(image_ids, list) or len(image_ids) > MAX_IMAGES:
             self._err(400, "too_many_images", "At most five images are allowed.")
             return
-        if not text and not image_ids and not force_draft:
+        if not text and not image_ids and not force_draft and action != "self_help":
             self._err(400, "empty_text", "Text or images are required.")
             return
         clean_images = []
@@ -1679,7 +1753,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             clean_images.append(uid)
         history = list(session.get("history") or [])
-        if text or not force_draft:
+        if text or (not force_draft and action != "self_help"):
             history.append({
                 "role": "user",
                 "content": text or ("[图片]" if session.get("lang") == "zh" else "[Image]"),
@@ -1695,6 +1769,21 @@ class Handler(BaseHTTPRequestHandler):
         result = intake_agent.respond(self.api_key, self.model, session, user,
                                       session.get("lang", "zh"), STORE, UPLOAD_DIR,
                                       force_draft=force_draft)
+        if action == "self_help" and result.get("stage") != "advice":
+            result.update({
+                "reply": ("知识库当前为空，暂无合适方案。你可以直接生成工单，识别结果和图片都会保留。"
+                          if session.get("lang") == "zh" else
+                          "The knowledge base is empty and no suitable solution is available. You can create a ticket without losing the result or images."),
+                "stage": "no_solution", "state": "no_solution",
+                "complete": False, "solution": None, "self_help": [],
+                "missing": [], "next_question": None, "question_options": [],
+                "active_route": "self_help",
+            })
+        if action == "smart_repair" and session.get("draft") and result.get("draft"):
+            merged = dict(result["draft"])
+            merged.update(session["draft"])
+            merged["image_ids"] = list(session.get("image_ids") or [])
+            result["draft"] = merged
         history = list(session.get("history") or [])
         history.append({"role": "assistant", "content": result.get("reply", "")})
         session = STORE.update_agent_session(session["id"], {
@@ -1705,15 +1794,39 @@ class Handler(BaseHTTPRequestHandler):
             "missing": result.get("missing") or [],
             "self_help": result.get("self_help") or [],
             "safety_warning": result.get("safety_warning", ""),
+            "route_options": result.get("route_options") or [],
+            "emergency": bool(result.get("emergency")),
+            "confidence": result.get("confidence", "low"),
+            "kb_status": result.get("kb_status", "empty"),
+            "solution": result.get("solution"),
+            "next_question": result.get("next_question"),
+            "question_options": result.get("question_options") or [],
+            "state": result.get("state", result.get("stage", "follow_up")),
+            "response_mode": result.get("response_mode", "complete"),
+            "active_route": (result.get("active_route") or
+                             ("self_help" if result.get("stage") == "advice"
+                             else ("smart_repair" if force_draft
+                                   else session.get("active_route", "")))),
         })
-        self._json(200, {"ok": True, "reply": result.get("reply", ""),
+        self._json(200, {"ok": True,
+                         "contract_version": result.get("contract_version", 2),
+                         "reply": result.get("reply", ""),
                          "source": result.get("source"), "ready": session.get("ready"),
                          "draft": session.get("draft"),
                          "stage": session.get("stage"),
                          "detected": session.get("detected") or {},
                          "missing": session.get("missing") or [],
                          "self_help": session.get("self_help") or [],
-                         "safety_warning": session.get("safety_warning", "")})
+                         "safety_warning": session.get("safety_warning", ""),
+                         "route_options": session.get("route_options") or [],
+                         "emergency": bool(session.get("emergency")),
+                         "confidence": session.get("confidence", "low"),
+                         "kb_status": session.get("kb_status", "empty"),
+                         "solution": session.get("solution"),
+                         "next_question": session.get("next_question"),
+                         "question_options": session.get("question_options") or [],
+                         "state": session.get("state"),
+                         "response_mode": session.get("response_mode", "complete")})
 
     def _api_agent_confirm(self, body, ip):
         user = self._require(ROLE_STUDENT)
@@ -1727,9 +1840,11 @@ class Handler(BaseHTTPRequestHandler):
             self._err(403, "forbidden", "That agent session is not yours.")
             return
         if session.get("ticket_id"):
-            self._err(409, "already_confirmed", "This draft was already confirmed.")
+            self._json(200, {"ok": True, "idempotent": True,
+                             "ticket": {"id": session.get("ticket_id")}})
             return
-        if not session.get("ready") or not session.get("draft"):
+        if (not session.get("draft") or
+                (not session.get("ready") and session.get("stage") != "manual")):
             self._err(409, "draft_not_ready", "The draft is not ready.")
             return
         draft = session["draft"]
@@ -1751,6 +1866,31 @@ class Handler(BaseHTTPRequestHandler):
             "dorm": body.get("dorm"),
         }
         self._create_ticket_for_user(user, create_body, agent_session_id=session["id"])
+
+    def _api_agent_event(self, body, ip):
+        user = self._require(ROLE_STUDENT)
+        if not user:
+            return
+        session = STORE.agent_session(body.get("id"))
+        if not session or session.get("user_id") != user["id"]:
+            self._err(403, "forbidden", "That agent session is not yours.")
+            return
+        event = body.get("event")
+        allowed = ("intake_started", "route_selected", "question_answered",
+                   "draft_saved", "draft_restored", "confirm_started",
+                   "confirm_succeeded", "network_error", "upload_failed",
+                   "human_requested", "resolved_without_ticket")
+        if event not in allowed:
+            self._err(400, "bad_event", "Unsupported event.")
+            return
+        STORE.add_agent_event({
+            "session_id": session["id"], "event": event,
+            "state": str(body.get("state") or session.get("state") or "")[:30],
+            "route": str(body.get("route") or session.get("active_route") or "")[:30],
+            "emergency": bool(session.get("emergency")),
+            "lang": session.get("lang", "zh"),
+        })
+        self._json(200, {"ok": True})
 
     # ---- student: create ticket ------------------------------------------ #
 

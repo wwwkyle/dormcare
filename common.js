@@ -56,7 +56,7 @@ window.DC = (function () {
       menuStudentRecords: "我的报修记录",
       menuStudentRecordsSub: "查看进度、上门时间与反馈评价",
       menuStudentAccount: "账号设置",
-      menuStudentAccountSub: "更正宿舍信息、修改登录密码",
+      menuStudentAccountSub: "维护手机号和宿舍信息、修改登录密码",
       menuWorkerPlan: "排班与派活",
       menuWorkerPlanSub: "生成当日路线、查看时间轴与未排入工单",
       menuWorkerPool: "我的工单",
@@ -100,6 +100,9 @@ window.DC = (function () {
       regHint: "只有学生可以自助注册。师傅账号由物业统一发放，管理员账号由系统预置，都不开放注册。",
       lblRegName: "姓名",
       phRegName: "如 王小明",
+      lblStudentPhone: "注册手机号",
+      phStudentPhone: "如 138 0000 0000",
+      studentPhoneHelp: "必填。支持中国大陆 11 位手机号；空格和短横线会自动清理。",
       lblRegCollege: "所属书院",
       regCollegeNone: "请选择书院",
       lblRegDorm: "宿舍号",
@@ -123,6 +126,8 @@ window.DC = (function () {
       auth_missing_password: "请输入密码。",
       auth_weak_password: "密码至少 6 位。",
       auth_missing_name: "请输入姓名。",
+      auth_missing_phone: "请输入注册手机号。",
+      auth_bad_phone: "请输入有效的中国大陆 11 位手机号。",
       auth_need_password: "两次输入的密码不一致。",
       auth_too_many: "登录尝试过于频繁，请稍后再试。",
       err_forbidden: "你没有权限访问该内容。",
@@ -163,6 +168,7 @@ window.DC = (function () {
       /* intake */
       intakeTitle: "AI 智能受理",
       intakeHint: "文字、语音和图片都进入同一个多轮助手；只有确认草稿后才会创建工单。",
+      intakeProgress: "受理进度",
       stepDescribe: "描述问题",
       stepAssist: "AI 追问 / 建议",
       stepDraft: "工单草稿",
@@ -220,6 +226,7 @@ window.DC = (function () {
       phName: "如 王同学",
       lblContact: "联系方式（选填）",
       phContact: "手机号 / 微信 / 邮箱",
+      contactMissingPhone: "账号尚未登记手机号，请在账号设置中补填，或在此手动输入联系方式。",
       lblDesc: "故障描述（选填）",
       phDesc: "补充说明，例如「下午三点后我在宿舍」",
       speechStart: "语音转文字",
@@ -235,6 +242,7 @@ window.DC = (function () {
       photoRules: "仅 JPG/PNG，每张不超过 5MB，最多 5 张。",
       photoInvalid: "仅支持每张不超过 5MB 的 JPG/PNG。",
       photoTooMany: "最多上传 5 张图片。",
+      photoRemove: "移除照片",
       agentPlaceholder: "继续描述故障或回答助手追问…",
       agentSend: "发送给 AI",
       agentConfirm: "确认草稿并创建",
@@ -267,8 +275,12 @@ window.DC = (function () {
       collapseAll: "收起全部",
       /* ---- 账号设置 / account settings ---- */
       accTitle: "账号设置",
-      accHint: "搬宿舍了或者密码需要更换，都可以在这里自己改，改完立刻生效。已提交的工单仍保留提交时的地址。",
+      accHint: "手机号、宿舍或密码需要更新，都可以在这里自己修改。已提交工单仍保留提交时的信息。",
       accRoomTitle: "我的宿舍",
+      accPhoneTitle: "我的手机号",
+      accPhoneHint: "新报修会默认带入此号码；仍可在每张工单中手动修改。",
+      accSavePhone: "保存手机号",
+      accPhoneOk: "手机号已更新，之后报修会默认带入。",
       accRoomHint: "报修地点取自这里。改完之后新提交的工单会落在新地址，已经派出去的单不会被改写——师傅已经在路上了。",
       accCurrentRoom: "当前登记",
       accPwTitle: "修改密码",
@@ -416,7 +428,7 @@ window.DC = (function () {
       adDeleteConfirm: "确认删除这张工单？此操作不可撤销。",
       adDeleted: "工单已删除。",
       adUsersSection: "账号管理",
-      adUsersHint: "更正登记错误的宿舍、重置密码、发放新账号。宿舍号是每张工单的报修地址，学生自己改不了，只能由这里更正。",
+      adUsersHint: "维护学生手机号与宿舍、重置密码、发放新账号。账号手机号会默认带入新工单联系方式。",
       adUserCount: "{n} 个账号",
       adNewStudent: "新建学生",
       adNewWorker: "发放师傅账号",
@@ -474,7 +486,7 @@ window.DC = (function () {
       menuStudentRecords: "My repair records",
       menuStudentRecordsSub: "Progress, arrival time and your feedback",
       menuStudentAccount: "Account settings",
-      menuStudentAccountSub: "Correct your room, change your password",
+      menuStudentAccountSub: "Maintain your mobile and room, change your password",
       menuWorkerPlan: "Schedule & dispatch",
       menuWorkerPlanSub: "Build the day's route, timeline and unplaced jobs",
       menuWorkerPool: "My jobs",
@@ -517,6 +529,9 @@ window.DC = (function () {
       regHint: "Only students can register here. Technician accounts are issued by the maintenance office and administrator accounts are seeded — neither is open for sign-up.",
       lblRegName: "Name",
       phRegName: "e.g. Alex Wong",
+      lblStudentPhone: "Registered mobile",
+      phStudentPhone: "e.g. 138 0000 0000",
+      studentPhoneHelp: "Required. Use an 11-digit mainland China mobile number; spaces and hyphens are removed.",
       lblRegCollege: "College",
       regCollegeNone: "Choose a college",
       lblRegDorm: "Room number",
@@ -540,6 +555,8 @@ window.DC = (function () {
       auth_missing_password: "Please enter your password.",
       auth_weak_password: "A password needs at least 6 characters.",
       auth_missing_name: "Please enter your name.",
+      auth_missing_phone: "Please enter your registered mobile number.",
+      auth_bad_phone: "Enter a valid 11-digit mainland China mobile number.",
       auth_need_password: "The two passwords do not match.",
       auth_too_many: "Too many sign-in attempts. Please try again later.",
       err_forbidden: "You do not have access to that.",
@@ -577,6 +594,7 @@ window.DC = (function () {
       tagAiFilled: "Filled by AI",
       intakeTitle: "AI intake",
       intakeHint: "Text, speech and images all enter one multi-turn assistant; no ticket is created until you confirm its draft.",
+      intakeProgress: "Intake progress",
       stepDescribe: "Describe",
       stepAssist: "AI questions / advice",
       stepDraft: "Ticket draft",
@@ -633,6 +651,7 @@ window.DC = (function () {
       phName: "e.g. Alex Wong",
       lblContact: "Contact (optional)",
       phContact: "Phone / WeChat / email",
+      contactMissingPhone: "No mobile number is registered yet. Add one in Account settings, or enter a contact here.",
       lblDesc: "Description (optional)",
       phDesc: "Anything else, e.g. \"I'm in the dorm after 3pm\"",
       speechStart: "Speech to text",
@@ -648,6 +667,7 @@ window.DC = (function () {
       photoRules: "JPG/PNG only, up to 5 MB each and 5 images.",
       photoInvalid: "Use JPG/PNG images no larger than 5 MB each.",
       photoTooMany: "Up to 5 images are allowed.",
+      photoRemove: "Remove photo",
       agentPlaceholder: "Describe the fault or answer the assistant…",
       agentSend: "Send to AI",
       agentConfirm: "Confirm draft and create",
@@ -680,8 +700,12 @@ window.DC = (function () {
       collapseAll: "Collapse all",
       /* ---- account settings ---- */
       accTitle: "Account settings",
-      accHint: "Moved rooms, or just want a different password — both are yours to change, and both take effect at once. Tickets you already filed keep the address they were filed with.",
+      accHint: "Update your mobile, room or password here. Tickets already filed keep the details captured when they were submitted.",
       accRoomTitle: "My room",
+      accPhoneTitle: "My mobile number",
+      accPhoneHint: "New repair requests use this number by default; each ticket remains editable.",
+      accSavePhone: "Save mobile number",
+      accPhoneOk: "Mobile number updated; new requests will use it by default.",
       accRoomHint: "This is the address repairs are filed against. After a change, new requests go to the new room; jobs already on the road are left alone, because a technician is already on the way there.",
       accCurrentRoom: "Currently on file",
       accPwTitle: "Change password",
@@ -823,7 +847,7 @@ window.DC = (function () {
       adDeleteConfirm: "Delete this ticket? This cannot be undone.",
       adDeleted: "Ticket deleted.",
       adUsersSection: "Accounts",
-      adUsersHint: "Correct a room that was entered wrong, reset a password, issue a new account. The room is the address every ticket is filed against; a student cannot edit it, so it is fixed here.",
+      adUsersHint: "Maintain student mobiles and rooms, reset passwords, and issue accounts. The account mobile is the default contact on new tickets.",
       adUserCount: "{n} accounts",
       adNewStudent: "New student",
       adNewWorker: "Issue a technician account",
@@ -934,7 +958,9 @@ window.DC = (function () {
       var byCode = t("err_" + data.code);
       if (byCode !== "err_" + data.code) return byCode;
     }
-    return data.error || t("err_generic");
+    // Server prose is diagnostic English. Chinese UI must never leak it when
+    // a stable code is missing or a new code reaches an older client.
+    return (LANG === "en" && data.error) ? data.error : t("err_generic");
   }
   DC.errorText = errorText;
 
@@ -1153,6 +1179,37 @@ window.DC = (function () {
   DC.displayName = displayName;
 
   function langIsZh() { return LANG === "zh"; }
+
+  var COMPOUND_SURNAMES = [
+    "欧阳", "司马", "上官", "诸葛", "东方", "皇甫", "尉迟", "公孙",
+    "慕容", "司徒", "令狐", "宇文", "长孙", "夏侯", "南宫"
+  ];
+
+  /** Localized default addressee for a repair; callers still keep it editable. */
+  function defaultStudentName(user, lang) {
+    user = user || {};
+    lang = lang || LANG;
+    var name = String(user.name || "").trim();
+    var nameEn = String(user.name_en || "").trim();
+    var chinese = (name.match(/[\u4e00-\u9fff]/g) || []).join("");
+    if (lang === "zh") {
+      var surname = "";
+      if (chinese) {
+        surname = chinese.charAt(0);
+        COMPOUND_SURNAMES.some(function (item) {
+          if (chinese.indexOf(item) === 0) { surname = item; return true; }
+          return false;
+        });
+      } else {
+        surname = (name || nameEn || user.username || "").split(/\s+/)[0];
+      }
+      return surname ? surname + "同学" : "";
+    }
+    var tokens = (nameEn || name || user.username || "").split(/\s+/).filter(Boolean);
+    if (!tokens.length) return "";
+    return "Student " + ((chinese && nameEn) ? tokens[0] : tokens[tokens.length - 1]);
+  }
+  DC.defaultStudentName = defaultStudentName;
 
   function roleLabel(role) {
     if (role === "worker") return t("roleWorker");

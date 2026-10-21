@@ -79,7 +79,7 @@ from auth import (ANY_ROLE, HOME_BY_ROLE, MAX_DORM, MAX_NAME, MAX_PHONE,
                   MAX_TRADE, MAX_USERNAME, MENU_PATH, ROLE_ADMIN, ROLE_STUDENT,
                   ROLE_WORKER, SESSION_COOKIE, SESSION_DAYS, clean_name,
                   clean_username, hash_password, new_session, password_error,
-                  public_user, session_expired, username_error,
+                  public_user, normalize_student_phone, session_expired, username_error,
                   verify_password)
 from config import (COLLEGES, COLLEGE_BY_ID, REPAIR_BY_ID, REPAIR_TYPES,
                     TRAVEL_RULES, college_blocks_text, college_label,
@@ -225,7 +225,7 @@ DEMO_ADMIN_PASSWORD = "admin2026"
 SEED_USERS = [
     {"role": ROLE_STUDENT, "username": "2024001", "name": "王小明", "name_en": "Wang Xiaoming",
      "college": "shaw", "block": "东座 1 栋", "dorm": "A-301",
-     "worker_id": "", "worker_ref": ""},
+     "phone": "13800000001", "worker_id": "", "worker_ref": ""},
     {"role": ROLE_STUDENT, "username": "2024009", "name": "赵雨桐", "name_en": "Zhao Yutong",
      "college": "shaw", "block": "西座 2 栋", "dorm": "A-415",
      "worker_id": "", "worker_ref": ""},
@@ -408,6 +408,32 @@ def auth_clear(ip, username):
 
 def body_lang(body):
     return body.get("lang") if body.get("lang") in ("zh", "en") else "zh"
+
+
+_COMPOUND_SURNAMES = (
+    "欧阳", "司马", "上官", "诸葛", "东方", "皇甫", "尉迟", "公孙",
+    "慕容", "司徒", "令狐", "宇文", "长孙", "夏侯", "南宫",
+)
+
+
+def default_student_name(user, lang="zh"):
+    """Localized ticket addressee derived from the signed-in account."""
+    name = str(user.get("name") or "").strip()
+    name_en = str(user.get("name_en") or "").strip()
+    chinese = "".join(ch for ch in name if "\u4e00" <= ch <= "\u9fff")
+    if lang == "zh":
+        if chinese:
+            surname = next((x for x in _COMPOUND_SURNAMES if chinese.startswith(x)),
+                           chinese[0])
+        else:
+            surname = (name or name_en or user.get("username", "")).split()[0]
+        return (surname + "同学") if surname else ""
+    tokens = (name_en or name or user.get("username", "")).split()
+    if not tokens:
+        return ""
+    # Seeded/localized Chinese names use family-name-first romanization.
+    surname = tokens[0] if chinese and name_en else tokens[-1]
+    return "Student " + surname
 
 
 AGENT_ERRORS = {
@@ -798,6 +824,9 @@ def admin_user_view(u, lang="zh", ticket_counts=None):
         "username": u.get("username", ""),
         "name": u.get("name", ""),
         "name_en": u.get("name_en", ""),
+        # Account contact number.  This is distinct from a worker roster's
+        # internal extension, which is merged below only for worker rows.
+        "phone": u.get("phone", "") if u.get("role") == ROLE_STUDENT else "",
         "college": u.get("college", ""),
         "college_label": college_label(u.get("college", ""), lang) if u.get("college") else "",
         "block": u.get("block", ""),
@@ -1308,6 +1337,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup": self._api_setup,
             # ---- self-service: nobody has to wait for the administrator ---- #
             "/api/account/room": self._api_account_room,
+            "/api/account/phone": self._api_account_phone,
             "/api/account/password": self._api_account_password,
             "/api/intake/parse": self._api_intake_parse,
             "/api/intake/advice": self._api_intake_advice,
@@ -1419,6 +1449,7 @@ class Handler(BaseHTTPRequestHandler):
         password = body.get("password") or ""
         name = clean_name(body.get("name"))
         college = body.get("college") or ""
+        phone, phone_code = normalize_student_phone(body.get("phone"), required=True)
 
         code = username_error(username) or password_error(password)
         if code:
@@ -1426,6 +1457,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not name:
             self._err(400, "auth_missing_name", "Please give your name.")
+            return
+        if phone_code:
+            self._err(400, phone_code, "Please give a valid mainland China mobile number.")
             return
         # Availability is checked before the address: "that account already
         # exists" is the more useful of the two answers, and it is the one the
@@ -1453,6 +1487,7 @@ class Handler(BaseHTTPRequestHandler):
             "username": username,
             "name": name,
             "name_en": "",
+            "phone": phone,
             "college": college,
             "block": block,
             "dorm": dorm,
@@ -1479,6 +1514,18 @@ class Handler(BaseHTTPRequestHandler):
     # name somebody else's account, so these two endpoints are structurally
     # incapable of an IDOR — which is exactly why they can be open to every
     # signed-in role rather than gated behind the administrator.
+
+    def _api_account_phone(self, body, ip):
+        """Update only the signed-in student's account contact number."""
+        user = self._require(ROLE_STUDENT)
+        if not user:
+            return
+        phone, code = normalize_student_phone(body.get("phone"), required=True)
+        if code:
+            self._err(400, code, "Please give a valid mainland China mobile number.")
+            return
+        updated = STORE.update_user(user["id"], {"phone": phone})
+        self._json(200, {"ok": True, "user": public_user(updated)})
 
     def _api_account_room(self, body, ip):
         """Correct the room on the caller's own account.
@@ -1967,7 +2014,8 @@ class Handler(BaseHTTPRequestHandler):
             # Attachments come from the server-side session, not editable IDs
             # supplied during confirmation.
             "image_ids": session.get("image_ids") or [],
-            "student_name": user.get("name", ""), "contact": body.get("contact", ""),
+            "student_name": body.get("student_name"),
+            "contact": body.get("contact"),
             "title": body.get("title") or draft.get("title", ""),
             "public_area": bool(body.get("public_area")),
             "college": body.get("college"), "block": body.get("block"),
@@ -2103,8 +2151,9 @@ class Handler(BaseHTTPRequestHandler):
             "slots": clean_slots,
             "description": (body.get("description") or "").strip()[:1000],
             "student_name": ((body.get("student_name") or "").strip()[:60]
-                             or user.get("name", "")),
-            "contact": (body.get("contact") or "").strip()[:80],
+                             or default_student_name(user, lang)),
+            "contact": ((body.get("contact") or "").strip()[:80]
+                        or user.get("phone", "")),
             "lang": lang,
             "ai_reason": (body.get("ai_reason") or "").strip()[:300],
             "ai_source": (body.get("ai_source") or "").strip()[:20],
@@ -2455,6 +2504,12 @@ class Handler(BaseHTTPRequestHandler):
         # A room only means something for a student: a technician has no dorm
         # and an administrator is not a resident.
         if target.get("role") == ROLE_STUDENT:
+            if body.get("phone") is not None:
+                phone, code = normalize_student_phone(body.get("phone"), required=False)
+                if code:
+                    self._err(400, code, "Please give a valid mainland China mobile number.")
+                    return
+                patch["phone"] = phone
             if body.get("college") is not None:
                 college = body.get("college") or ""
                 if college not in COLLEGE_BY_ID:
@@ -2517,6 +2572,7 @@ class Handler(BaseHTTPRequestHandler):
         password = body.get("password") or ""
         name = clean_name(body.get("name"))
         college = body.get("college") or ""
+        phone, phone_code = normalize_student_phone(body.get("phone"), required=True)
 
         code = username_error(username) or password_error(password)
         if code:
@@ -2524,6 +2580,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not name:
             self._err(400, "auth_missing_name", "Please give a name.")
+            return
+        if phone_code:
+            self._err(400, phone_code, "Please give a valid mainland China mobile number.")
             return
         if STORE.user_by_username(username):
             self._err(409, "auth_username_taken", "That account already exists.")
@@ -2545,6 +2604,7 @@ class Handler(BaseHTTPRequestHandler):
             "username": username,
             "name": name,
             "name_en": "",
+            "phone": phone,
             "college": college,
             "block": block,
             "dorm": dorm,

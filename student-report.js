@@ -30,6 +30,7 @@
   var agentSessionId = "";
   var SESSION_KEY = "dormcare.agentSession";
   var draftSaveTimer = null;
+  var identityDefaultsInitialized = false;
 
   function $(id) { return document.getElementById(id); }
 
@@ -109,6 +110,18 @@
     if (publicArea) renderBlockOptions();
   }
 
+  function initializeIdentityDefaults(user) {
+    if (identityDefaultsInitialized || !user) return;
+    identityDefaultsInitialized = true;
+    var name = $("fName"), contact = $("fContact"), hint = $("contactHint");
+    if (name && !name.value) name.value = DC.defaultStudentName(user, DC.lang);
+    if (contact && !contact.value && user.phone) contact.value = user.phone;
+    if (hint) {
+      hint.hidden = !!user.phone;
+      hint.textContent = user.phone ? "" : t("contactMissingPhone");
+    }
+  }
+
   /* ====================================================================== */
   /*  availability grid                                                     */
   /* ====================================================================== */
@@ -165,7 +178,8 @@
     var node = $("photoPreview");
     node.innerHTML = reportUploads.map(function (x) {
       return '<figure><img src="' + esc(x.url) + '" alt=""><button type="button" ' +
-        'class="btn tiny danger" data-remove-photo="' + esc(x.id) + '">×</button></figure>';
+        'class="btn tiny danger" aria-label="' + esc(t("photoRemove")) +
+        '" data-remove-photo="' + esc(x.id) + '">×</button></figure>';
     }).join("");
   }
 
@@ -709,6 +723,7 @@
       DC.post("/api/agent/confirm", {
         id: agentSessionId, lang: DC.lang,
         date: $("fDate").value, slots: pairs,
+        student_name: $("fName").value.trim(),
         contact: $("fContact").value.trim(),
         title: $("fTitle").value.trim(),
         repair_type: selType, priority: selPriority,
@@ -737,6 +752,8 @@
     renderDateOptions();
     renderSlots();
     renderAddress();
+    var contactHint = $("contactHint");
+    if (contactHint && !contactHint.hidden) contactHint.textContent = t("contactMissingPhone");
     renderConversation();
     if (lastAgentResult) renderAgentResult(lastAgentResult);
     if (lastAgentDraft) applyAgentDraft(lastAgentDraft, true);
@@ -762,6 +779,7 @@
       renderDateOptions();
       renderSlots();
       renderAddress(user);
+      initializeIdentityDefaults(user);
       return restoreAgentSession();
     });
   }, "student");

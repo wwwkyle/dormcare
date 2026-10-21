@@ -44,7 +44,8 @@
         <span class="tag ai" data-i18n="tagRag">RAG</span>
       </div>
       <p class="hint" data-i18n="intakeHint">输入文字、语音或图片，多轮补充信息；确认草稿后才会创建工单。</p>
-      <ol class="intake-steps" id="intakeSteps" aria-label="Intake progress">
+      <ol class="intake-steps" id="intakeSteps" data-i18n-aria="intakeProgress"
+          aria-label="受理进度">
         <li data-step="describe" class="active" data-i18n="stepDescribe">描述问题</li>
         <li data-step="assist" data-i18n="stepAssist">AI 追问 / 建议</li>
         <li data-step="draft" data-i18n="stepDraft">工单草稿</li>
@@ -165,6 +166,7 @@
         <div>
           <label class="lbl" for="fContact" data-i18n="lblContact">联系方式（选填）</label>
           <input type="text" id="fContact" maxlength="80" data-i18n-ph="phContact">
+          <p class="blk-hint" id="contactHint" hidden></p>
         </div>
       </div>
 

@@ -83,6 +83,12 @@ def main():
         visible = stu.call("/api/tickets")[1]["tickets"][0]
         ok("student sees completion fields", visible.get("completed_at") and
            visible.get("completed_by") and done_id in visible.get("completion_image_ids", []))
+        s, english_default = stu.call("/api/tickets", {
+            "lang": "en", "repair_type": "chair", "priority": "normal",
+            "date": day, "slots": [[1, 4]], "description": "Chair is unstable."})
+        ok("manual ticket gets English surname and account-phone defaults",
+           s == 200 and english_default["ticket"].get("student_name") == "Student Wang"
+           and english_default["ticket"].get("contact") == "13800000001")
 
         s, agent_up = stu.call("/api/uploads", {
             "purpose": "agent", "images": [{"mime": "image/png", "data": encoded}]})
@@ -145,6 +151,9 @@ def main():
         ok("confirmed draft creates ticket with image", s == 200 and
            confirmed.get("ticket", {}).get("id") and
            confirmed["ticket"]["image_ids"] == [agent_image_id])
+        ok("agent confirmation defaults localized surname and registered phone",
+           confirmed.get("ticket", {}).get("student_name") == "王同学" and
+           confirmed.get("ticket", {}).get("contact") == "13800000001")
         ticket_id = confirmed["ticket"]["id"]
         s, duplicate = stu.call("/api/agent/confirm", {
             "id": aid, "date": day, "slots": [[2, 8]]})

@@ -78,6 +78,9 @@
         '<input type="text" id="ad-dorm-' + esc(u.id) + '" maxlength="30" value="' +
         esc(u.dorm || "") + '"></div>' +
         "</div>" +
+        '<div><label class="lbl">' + esc(t("lblStudentPhone")) + "</label>" +
+        '<input type="tel" id="ad-phone-' + esc(u.id) + '" maxlength="40" value="' +
+        esc(u.phone || "") + '" placeholder="' + esc(t("phStudentPhone")) + '"></div>' +
         '<div class="grid2">' +
         '<div><label class="lbl">' + esc(t("lblRegCollege")) + "</label>" +
         '<select id="ad-college-' + esc(u.id) + '" data-college-for="' + esc(u.id) + '">' +
@@ -166,7 +169,8 @@
 
   function clearCreateInputs() {
     ["adCreateUser", "adCreateName", "adCreatePass", "adCreateDorm",
-     "adCreateTradeZh", "adCreateTradeEn", "adCreatePhone"].forEach(function (id) {
+     "adCreateStudentPhone", "adCreateTradeZh", "adCreateTradeEn",
+     "adCreatePhone"].forEach(function (id) {
       var el = $(id);
       if (el) el.value = "";
     });
@@ -232,14 +236,16 @@
       var blk = $("adCreateBlock");
       var block = blk ? (blk.value || "") : "";
       var dorm = ($("adCreateDorm") ? $("adCreateDorm").value : "").trim();
+      var phone = ($("adCreateStudentPhone") ? $("adCreateStudentPhone").value : "").trim();
       if (!college) { setCreateMsg("auth_missing_college", "err"); return; }
       if (blk && !blk.disabled && !block) { setCreateMsg("auth_need_block", "err"); return; }
       if (!dorm) { setCreateMsg("auth_missing_dorm", "err"); return; }
+      if (!phone) { setCreateMsg("auth_missing_phone", "err"); return; }
       okKey = "adCreatedUser";
       path = "/api/admin/user/create";
       body = {
         username: username, name: name, password: password,
-        college: college, block: block, dorm: dorm, lang: DC.lang
+        phone: phone, college: college, block: block, dorm: dorm, lang: DC.lang
       };
     }
 
@@ -265,9 +271,11 @@
     var dormEl = $("ad-dorm-" + id);
     var collegeEl = $("ad-college-" + id);
     var blockEl = $("ad-block-" + id);
+    var phoneEl = $("ad-phone-" + id);
     var body = {
       id: id, lang: DC.lang,
       name: nameEl ? nameEl.value.trim() : "",
+      phone: phoneEl ? phoneEl.value.trim() : "",
       college: collegeEl ? collegeEl.value : "",
       block: blockEl ? (blockEl.value || "") : "",
       dorm: dormEl ? dormEl.value.trim() : ""

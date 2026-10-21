@@ -431,9 +431,10 @@ shift 08:30 at workshop
 | GET | `/api/health` | 任何人 | 服务状态、密钥是否就绪 |
 | GET | `/api/config` | 任何人 | 书院（含楼栋清单）、报修类型+固定工时、路程规则、可排班日期 |
 | POST | `/api/auth/login` | 任何人 | 登录，下发 HttpOnly 会话 Cookie，返回该角色应去的页面 |
-| POST | `/api/auth/register` | 任何人 | **学生**自助注册（书院 + 楼栋 + 宿舍号必填；师傅账号不开放注册） |
+| POST | `/api/auth/register` | 任何人 | **学生**自助注册（手机号 + 书院 + 楼栋 + 宿舍号必填；手机号清理空格/短横线后须为 `1` 开头的 11 位数字；师傅账号不开放注册） |
 | POST | `/api/auth/logout` | 任何人 | 退出，服务端立即吊销会话 |
 | POST | `/api/account/room` | 学生 | **自助更正宿舍**（书院 + 楼栋 + 宿舍号），只作用于自己的账号 |
+| POST | `/api/account/phone` | 学生 | **自助修改注册手机号**，只作用于当前会话账号 |
 | POST | `/api/account/password` | 登录 | **自助修改自己的密码**（需当前密码；吊销其它会话，保留当前会话） |
 
 页面放行的完整规则在 `testclient.PAGE_OWNER`：`None` = 所有已登录者（`menu`、
@@ -549,6 +550,8 @@ RAG 语料 = `config.py` 中的三张表（报修类型 + 书院 + 路程规则�
 - 密钥不写日志、不回显、不发送到浏览器；`/api/setup` 需登录
 - 静态文件走**显式白名单**（`STATIC_FILES`，每个条目带所需角色），并拒绝点开头文件 → 无路径穿越
 - 按客户端 IP 限流（120 次 / 60 秒）；`.env` 类文件不在白名单内，无法被读取
+- `users[].phone` 是学生账号手机号；`workers[].phone` 仍是师傅内部分机，两者语义与接口分离
+- `/api/auth/me` 只向账户本人返回自己的手机号；管理员账号列表可读/维护学生手机号，学生不能枚举其他学生手机号
 - 学生只能看到**自己**的工单、姓名与联系方式；师傅的分机号只发给师傅角色
 
 > 一句话：**「看不到」不是前端把按钮藏起来，而是服务端不给数据。**
@@ -792,6 +795,13 @@ JSON Store 新增 `uploads`、`agent_sessions` 集合；工单新增惰性可选
 `title`、`image_ids`、`completion_image_ids`、`completed_at`、`completed_by`、
 `agent_session_id`。**无迁移脚本，惰性默认字段兼容**：旧 JSON 加载时自动补空集合，
 旧工单读取时将缺失字段视为空列表/空值，旧状态值不改写。
+
+学生账号新增惰性字段 `phone`。新自助注册与管理员新建学生必须提供手机号；旧 JSON 中
+缺少 `phone` 的账号按空字符串读取，不影响登录、账号设置或报修。旧账号报修时联系方式
+保持为空并提示补填，不伪造号码。姓名默认仅用于新工单草稿：中文取常见复姓优先的姓氏
+加“同学”，英文显示 `Student <surname>`；用户输入后语言切换不会覆盖。AI 确认与手工
+提交由服务端做同样兜底。系统只翻译界面、稳定错误码和 AI 回复，不翻译用户输入、固有
+地址或历史消息。
 
 上传实体记录 `id / owner_user_id / purpose / draft_id / ticket_id / mime / size /
 filename / created_at`。文件名由服务端随机生成，读取只使用记录内 basename；服务端校验

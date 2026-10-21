@@ -218,6 +218,20 @@ def main():
         s, me2 = stu.call("/api/auth/me")
         check("the session reports the new room immediately",
               me2["user"]["dorm"] == "B-909", me2["user"].get("dorm"))
+        check("the signed-in student can read their own registered phone",
+              me2["user"].get("phone") == "13800000001", me2["user"].get("phone"))
+        s, old_me = other.call("/api/auth/me")
+        check("an old account without phone remains compatible",
+              s == 200 and old_me["user"].get("phone") == "", old_me.get("user"))
+        s, changed_phone = other.call("/api/account/phone",
+                                      {"phone": "139-0000 0088", "lang": "zh"})
+        check("a student can add and normalize their own phone",
+              s == 200 and changed_phone["user"].get("phone") == "13900000088",
+              changed_phone.get("user"))
+        s, bad_phone = other.call("/api/account/phone", {"phone": "not-a-phone"})
+        check("self-service rejects an invalid phone with a stable code",
+              s == 400 and bad_phone.get("code") == "auth_bad_phone",
+              bad_phone.get("code"))
 
         # a technician's report form must not be able to reach it
         s, d = tech.call("/api/account/room",

@@ -487,6 +487,15 @@ async function runRole(page, module, cookie, opts) {
       id("intakeSteps").querySelectorAll("li").length === 4);
     check("draft form starts collapsed but manual fallback remains available",
       id("draftSection").hidden === true && !!id("manualOpen"));
+    check("report defaults localized surname and registered phone",
+      id("fName").value === "王同学" && id("fContact").value === "13800000001",
+      id("fName").value + " / " + id("fContact").value);
+    id("fName").value = "手工称呼";
+    id("fContact").value = "WeChat-only";
+    DC.setLang("en");
+    check("language switching preserves manually edited identity fields",
+      id("fName").value === "手工称呼" && id("fContact").value === "WeChat-only");
+    DC.setLang("zh");
 
     const collegeOpts = id("fCollege") ? id("fCollege").innerHTML.match(/<option/g) : null;
     check("college picker has 8 colleges", collegeOpts && collegeOpts.length === 8,
@@ -938,6 +947,11 @@ async function runLogin() {
 
   const colOpts = (document.getElementById("regCollege").innerHTML.match(/<option/g) || []).length;
   check("the sign-up panel offers the 8 colleges", colOpts === 9, "options=" + colOpts);
+  const phone = document.getElementById("regPhone");
+  check("student sign-up requires a localized mobile field",
+    !!phone && phone.getAttribute("type") === "tel" &&
+    phone.getAttribute("maxlength") === "40" &&
+    DC.I18N.zh.auth_missing_phone && DC.I18N.en.auth_bad_phone);
 
   const i18nNodes = document.querySelectorAll("[data-i18n]");
   const unresolved = i18nNodes

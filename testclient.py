@@ -207,7 +207,7 @@ class Client:
         return self.user
 
     def register(self, username, name, password, college="", college_block="",
-                 dorm="", block=None):
+                 dorm="", block=None, phone="13800000000"):
         """Sign a student up. The room is required — it is their address.
 
         `block` is accepted as an alias for `college_block` because "block"
@@ -215,6 +215,7 @@ class Client:
         """
         status, data = self.call("/api/auth/register", {
             "username": username, "name": name, "password": password,
+            "phone": phone,
             "college": college, "block": college_block if block is None else block,
             "dorm": dorm})
         if status == 200:

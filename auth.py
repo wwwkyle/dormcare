@@ -175,6 +175,28 @@ def clean_name(raw):
     return (raw or "").strip()[:MAX_NAME]
 
 
+def normalize_student_phone(raw, required=True):
+    """Return ``(normalized, error_code)`` for a mainland mobile number.
+
+    Account phone numbers are deliberately separate from the technician
+    roster's ``phone`` (an internal extension).  Spaces and hyphens are the
+    only presentation characters accepted, then the stored value is exactly
+    eleven digits beginning with 1.
+    """
+    value = raw if isinstance(raw, str) else ""
+    if len(value) > MAX_PHONE:
+        return "", "auth_bad_phone"
+    value = value.strip()
+    if not value:
+        return ("", "auth_missing_phone") if required else ("", None)
+    if any(not (ch.isdigit() or ch in " -") for ch in value):
+        return "", "auth_bad_phone"
+    normalized = value.replace(" ", "").replace("-", "")
+    if len(normalized) != 11 or not normalized.startswith("1") or not normalized.isdigit():
+        return "", "auth_bad_phone"
+    return normalized, None
+
+
 # --------------------------------------------------------------------------- #
 # 对外视图 / Public view
 # --------------------------------------------------------------------------- #
@@ -189,6 +211,9 @@ def public_user(user):
         "username": user["username"],
         "name": user.get("name", ""),
         "name_en": user.get("name_en", ""),
+        # This view is only returned for the signed-in account itself.  Admin
+        # lists use a separate role-gated view; no student list exposes it.
+        "phone": user.get("phone", ""),
         "college": user.get("college", ""),
         # The room IS part of who you are: a repair request is filed against
         # the address on the account, so the student console never has to ask

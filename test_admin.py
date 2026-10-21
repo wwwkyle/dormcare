@@ -104,6 +104,7 @@ def main():
             ("/api/admin/user/update", {"id": "U-1", "name": "x"}, "POST"),
             ("/api/admin/user/password", {"id": "U-1", "password": "dorm2026"}, "POST"),
             ("/api/admin/user/create", {"username": "x1", "name": "x", "password": "dorm2026",
+                                        "phone": "13800000000",
                                         "college": "muse", "dorm": "B-1"}, "POST"),
             ("/api/admin/worker/create", {"worker_id": "X1", "name": "x", "password": "fix2026",
                                           "specialties": ["desk"]}, "POST"),
@@ -131,7 +132,7 @@ def main():
             ("technician cannot read the board", tech, "/api/admin/overview", None, "GET"),
             ("technician cannot issue an account", tech, "/api/admin/user/create",
              {"username": "x1", "name": "x", "password": "dorm2026",
-              "college": "muse", "dorm": "B-1"}, "POST"),
+              "phone": "13800000000", "college": "muse", "dorm": "B-1"}, "POST"),
             ("technician cannot delete a ticket", tech, "/api/admin/ticket/delete",
              {"id": "T00000000"}, "POST"),
         ]:
@@ -269,6 +270,9 @@ def main():
               "%s %s" % (by_name["2024001"].get("college"), by_name["2024001"].get("dorm")))
         check("a student row reports how many tickets it owns",
               by_name["2024001"]["ticket_count"] == 1, by_name["2024001"]["ticket_count"])
+        check("administrator can read a student's account phone",
+              by_name["2024001"].get("phone") == "13800000001",
+              by_name["2024001"].get("phone"))
         check("a technician row keeps the ACCOUNT id, not the roster record id",
               by_name["A01"]["id"] == "U-A01" and by_name["A01"]["worker_ref"] == "W-A01",
               "%s / %s" % (by_name["A01"].get("id"), by_name["A01"].get("worker_ref")))
@@ -293,6 +297,13 @@ def main():
         s, me = stu.call("/api/auth/me")
         check("the student's own session reports the corrected room",
               me["user"]["dorm"] == "A-999", me["user"].get("dorm"))
+        s, d = admin.call("/api/admin/user/update", {
+            "id": by_name["2024001"]["id"], "phone": "137-0000 0066"})
+        check("administrator can maintain and normalize a student's phone",
+              s == 200 and d["user"].get("phone") == "13700000066", d.get("user"))
+        s, me = stu.call("/api/auth/me")
+        check("the student immediately sees only their own updated phone",
+              me["user"].get("phone") == "13700000066", me.get("user"))
         # ...and the NEXT ticket they file lands there, which is the point
         s, tk2 = stu.call("/api/tickets", {
             "lang": "zh", "repair_type": "light", "priority": "low", "date": day,
@@ -350,8 +361,11 @@ def main():
         fresh_number = "8" + str(int(time.time()))[-7:]
         s, d = admin.call("/api/admin/user/create", {
             "username": fresh_number, "name": "发放的学生", "password": "dorm2026",
+            "phone": "138-0000 0077",
             "college": "muse", "block": "", "dorm": "B-808"})
         check("an administrator can issue a student account", s == 200, d.get("code"))
+        check("administrator-created student phone is normalized and readable",
+              d.get("user", {}).get("phone") == "13800000077", d.get("user"))
         s, issued = signin(fresh_number, "dorm2026")
         check("the issued student can sign in and starts empty",
               s == 200 and issued.user["role"] == "student"
@@ -360,25 +374,28 @@ def main():
 
         s, d = admin.call("/api/admin/user/create", {
             "username": fresh_number, "name": "重复", "password": "dorm2026",
+            "phone": "13800000077",
             "college": "muse", "dorm": "B-808"})
         check("a duplicate account is refused -> 409",
               s == 409 and d.get("code") == "auth_username_taken", "%d %s" % (s, d.get("code")))
         s, d = admin.call("/api/admin/user/create", {
-            "username": "70000001", "name": "无书院", "password": "dorm2026", "dorm": "B-1"})
+            "username": "70000001", "name": "无书院", "password": "dorm2026",
+            "phone": "13800000077", "dorm": "B-1"})
         check("a student account without a college -> 400",
               s == 400 and d.get("code") == "auth_missing_college", "%d %s" % (s, d.get("code")))
         s, d = admin.call("/api/admin/user/create", {
             "username": "70000001", "name": "无楼栋", "password": "dorm2026",
-            "college": "shaw", "dorm": "A-1"})
+            "phone": "13800000077", "college": "shaw", "dorm": "A-1"})
         check("a tower-less college still demands its tower -> 400",
               s == 400 and d.get("code") == "auth_need_block", "%d %s" % (s, d.get("code")))
         s, d = admin.call("/api/admin/user/create", {
-            "username": "70000001", "name": "无宿舍", "password": "dorm2026", "college": "muse"})
+            "username": "70000001", "name": "无宿舍", "password": "dorm2026",
+            "phone": "13800000077", "college": "muse"})
         check("a student account without a room -> 400",
               s == 400 and d.get("code") == "auth_missing_dorm", "%d %s" % (s, d.get("code")))
         s, d = admin.call("/api/admin/user/create", {
             "username": "bad name!", "name": "x", "password": "dorm2026",
-            "college": "muse", "dorm": "B-1"})
+            "phone": "13800000077", "college": "muse", "dorm": "B-1"})
         check("an illegal account name -> 400",
               s == 400 and d.get("code") == "auth_bad_username", "%d %s" % (s, d.get("code")))
 

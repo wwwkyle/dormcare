@@ -79,6 +79,7 @@
     renderBlockOptions();
     if ($("aBlock")) $("aBlock").value = me.block || "";
     if ($("aDorm")) $("aDorm").value = me.dorm || "";
+    if ($("aPhone")) $("aPhone").value = me.phone || "";
     renderRoomNow(me);
   }
 
@@ -111,6 +112,26 @@
       DC.me = res.data.user;
       DC.setMsg(msg, "accRoomOk", "ok");
       renderRoomNow(DC.me);
+    }).catch(function () {
+      DC.busy(btn, false);
+      DC.setMsg(msg, "err_network", "err");
+    });
+  }
+
+  function savePhone() {
+    var btn = $("accPhoneSave"), msg = $("accPhoneMsg");
+    var phone = ($("aPhone") ? $("aPhone").value : "").trim();
+    DC.busy(btn, true);
+    DC.setMsg(msg, "", "");
+    DC.post("/api/account/phone", { phone: phone, lang: DC.lang }).then(function (res) {
+      DC.busy(btn, false);
+      if (!res.ok) {
+        DC.setMsg(msg, (res.data && res.data.code) || "err_generic", "err");
+        return;
+      }
+      DC.me = res.data.user;
+      $("aPhone").value = DC.me.phone || "";
+      DC.setMsg(msg, "accPhoneOk", "ok");
     }).catch(function () {
       DC.busy(btn, false);
       DC.setMsg(msg, "err_network", "err");
@@ -162,6 +183,8 @@
     if (college) college.addEventListener("change", renderBlockOptions);
     var roomBtn = $("accRoomSave");
     if (roomBtn) roomBtn.addEventListener("click", saveRoom);
+    var phoneBtn = $("accPhoneSave");
+    if (phoneBtn) phoneBtn.addEventListener("click", savePhone);
     var pwBtn = $("accPwSave");
     if (pwBtn) pwBtn.addEventListener("click", savePassword);
   }

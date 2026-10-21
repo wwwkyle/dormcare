@@ -168,11 +168,13 @@
     var btn = $("registerBtn");
     var username = $("regUser").value.trim();
     var name = $("regName").value.trim();
+    var phone = $("regPhone").value.trim();
     var password = $("regPass").value;
     var again = $("regPass2").value;
 
     if (!username) { fail(msg, { data: { code: "auth_missing_username" } }); return; }
     if (!name) { fail(msg, { data: { code: "auth_missing_name" } }); return; }
+    if (!phone) { fail(msg, { data: { code: "auth_missing_phone" } }); return; }
     if (!password) { fail(msg, { data: { code: "auth_missing_password" } }); return; }
     if (password !== again) { fail(msg, { data: { code: "auth_need_password" } }); return; }
 
@@ -192,7 +194,7 @@
     msg.textContent = "";
     DC.post("/api/auth/register", {
       username: username, name: name, password: password,
-      college: college, block: block, dorm: dorm, lang: DC.lang
+      phone: phone, college: college, block: block, dorm: dorm, lang: DC.lang
     }).then(function (res) {
       DC.busy(btn, false);
       if (!res.ok) { fail(msg, res); return; }

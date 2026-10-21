@@ -358,8 +358,11 @@ def main():
         # "already taken" is a check we want to make on purpose, not by accident.
         new_number = "9" + str(int(time.time()))[-7:]
         fresh = Client(BASE)
-        s, d = fresh.register(new_number, "新同学", "dorm2026", "muse", "", "B-808")
+        s, d = fresh.register(new_number, "新同学", "dorm2026", "muse", "", "B-808",
+                              phone="138-0000 0099")
         check("a new student can self-register", s == 200 and d["user"]["role"] == "student", d)
+        check("registration normalizes and returns the caller's own phone",
+              d.get("user", {}).get("phone") == "13800000099", d.get("user"))
         check("self-registration issues a session (auto sign-in)", bool(fresh.cookie))
         s, d = fresh.call("/api/tickets")
         check("the new student starts with an empty list", s == 200 and d["tickets"] == [], d.get("tickets"))
@@ -378,6 +381,14 @@ def main():
         check("short password -> 400", s == 400 and d["code"] == "auth_weak_password")
         s, d = dup.register("20247777", "", "dorm2026")
         check("missing name -> 400", s == 400 and d["code"] == "auth_missing_name")
+        s, d = dup.register("20247777", "谁", "dorm2026", "muse", "", "B-808",
+                            phone="")
+        check("missing registration phone -> 400",
+              s == 400 and d.get("code") == "auth_missing_phone", d.get("code"))
+        s, d = dup.register("20247777", "谁", "dorm2026", "muse", "", "B-808",
+                            phone="<script>13800000000")
+        check("invalid/injected registration phone -> 400",
+              s == 400 and d.get("code") == "auth_bad_phone", d.get("code"))
 
         # The room is mandatory: it is the address every later ticket carries,
         # so an account without one could never file a repair.

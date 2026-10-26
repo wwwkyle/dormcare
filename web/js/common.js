@@ -260,6 +260,8 @@ window.DC = (function () {
       routeRepair: "B 生成工单",
       emergencyRepair: "立即报修",
       kbEmpty: "知识库当前为空",
+      kbHit: "依据知识库",
+      kbNone: "知识库没有对应的自行维修步骤",
       confidenceLabel: "置信度",
       draftRestored: "已恢复上次受理草稿。",
       submitBtn: "手动提交报修",
@@ -363,14 +365,26 @@ window.DC = (function () {
       detail: "详情",
       /* setup */
       setupTitle: "启用模型密钥",
-      setupBody: "AI 暂不可用。填入 OpenRouter 密钥即可启用，密钥只存在服务器内存中。",
-      setupPlaceholder: "粘贴 OpenRouter 密钥…",
+      setupBody: "仅管理员可配置。可选 OpenRouter、OpenAI、DeepSeek、月之暗面、智谱、硅基流动、通义千问，或填写自定义的 OpenAI 兼容接口。密钥只留在服务器内存中。",
+      setupPlaceholder: "粘贴模型密钥…",
+      setupProvider: "模型服务",
+      setupModelPh: "模型名，可留空",
+      setupBasePh: "自定义接口根地址，例如 https://example.com/v1",
+      providerOpenrouter: "OpenRouter",
+      providerMoonshot: "月之暗面",
+      providerZhipu: "智谱",
+      providerSilicon: "硅基流动",
+      providerDashscope: "通义千问",
+      providerCustom: "自定义兼容接口",
       setupSubmit: "启用",
       setupWorking: "正在服务器上校验…",
       setup_ok: "密钥已启用并通过校验，AI 功能已就绪。",
       setup_unverified: "密钥已保存在服务端，但刚才无法连接模型校验。你调用 AI 时仍会使用它。",
       setup_rejected: "密钥被服务商拒绝（401/403），未写入。请检查后重试。",
       setup_not_a_key: "这看起来不是有效的密钥。",
+      setup_bad_provider: "不支持这个模型服务。",
+      setup_bad_base: "自定义接口必须是不带账号密码的 https 地址。",
+      setup_bad_model: "模型名无效。自定义接口需要填写模型名。",
       setup_missing_key: "请输入密钥。",
       setup_already_enrolled: "服务端已登记过密钥。",
       setup_disabled_env: "服务端已通过环境变量配置密钥，页面登记已停用。",
@@ -707,6 +721,8 @@ window.DC = (function () {
       routeRepair: "B Create ticket",
       emergencyRepair: "Report now",
       kbEmpty: "Knowledge base is currently empty",
+      kbHit: "From the knowledge base",
+      kbNone: "No do-it-yourself steps in the knowledge base",
       confidenceLabel: "Confidence",
       draftRestored: "Your previous intake draft was restored.",
       submitBtn: "Submit manually",
@@ -805,14 +821,26 @@ window.DC = (function () {
       emptyPool: "No tickets waiting.",
       detail: "Details",
       setupTitle: "Enable the model key",
-      setupBody: "AI is off. Paste an OpenRouter key to enable it. The key stays in server memory only.",
-      setupPlaceholder: "Paste the OpenRouter key…",
+      setupBody: "Administrators only. Choose OpenRouter, OpenAI, DeepSeek, Moonshot, Zhipu, SiliconFlow, DashScope, or a custom OpenAI-compatible endpoint. The key stays in server memory only.",
+      setupPlaceholder: "Paste the model key…",
+      setupProvider: "Model provider",
+      setupModelPh: "Model name, optional",
+      setupBasePh: "Custom API root, for example https://example.com/v1",
+      providerOpenrouter: "OpenRouter",
+      providerMoonshot: "Moonshot",
+      providerZhipu: "Zhipu",
+      providerSilicon: "SiliconFlow",
+      providerDashscope: "DashScope",
+      providerCustom: "Custom compatible endpoint",
       setupSubmit: "Enable",
       setupWorking: "Verifying on the server…",
       setup_ok: "Key enrolled and verified. AI features are ready.",
       setup_unverified: "Key enrolled, but the model could not be reached to verify it just now. It will still be used when you call the AI.",
       setup_rejected: "The provider rejected this key (401/403). It has not been enrolled — check the value and try again.",
       setup_not_a_key: "That does not look like a valid key.",
+      setup_bad_provider: "That model provider is not supported.",
+      setup_bad_base: "A custom endpoint must be an https URL with no embedded credentials.",
+      setup_bad_model: "That model name is not valid. A custom endpoint needs a model name.",
       setup_missing_key: "Please enter a key.",
       setup_already_enrolled: "A key is already enrolled on this server.",
       setup_disabled_env: "This server was started with a key in its environment, so page enrollment is disabled.",
@@ -1178,7 +1206,7 @@ window.DC = (function () {
       var setup = document.getElementById("setup");
       // Enrolling a key requires being signed in, so the panel is only offered
       // to someone the server would actually accept it from.
-      if (setup) setup.hidden = !(d.enrollable && DC.me);
+      if (setup) setup.hidden = !(d.enrollable && DC.me && DC.me.role === "admin");
       return d;
     }).catch(function () {
       setStatus("down", "statusDown");
@@ -1558,22 +1586,38 @@ window.DC = (function () {
   DC.afterLang = afterLang;
 
   /* ====================================================================== */
-  /*  setup panel (shared: either page can enrol a key)                     */
+  /*  setup panel (administrator pages only)                               */
   /* ====================================================================== */
 
   function wireSetup() {
     var form = document.getElementById("setupForm");
     if (!form) return;
     var keyInput = document.getElementById("setupKey");
+    var provider = document.getElementById("setupProvider");
+    var modelInput = document.getElementById("setupModel");
+    var baseInput = document.getElementById("setupBase");
     var btn = document.getElementById("setupBtn");
     var msg = document.getElementById("setupMsg");
+    function syncProvider() {
+      if (!provider || !baseInput) return;
+      var custom = provider.value === "custom";
+      baseInput.hidden = !custom;
+      baseInput.required = custom;
+    }
+    if (provider) provider.addEventListener("change", syncProvider);
+    syncProvider();
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var v = keyInput.value;
       if (!v) return;
       busy(btn, true);
       msg.textContent = t("setupWorking");
-      post("/api/setup", { key: v }).then(function (res) {
+      post("/api/setup", {
+        key: v,
+        provider: provider ? provider.value : "openrouter",
+        model: modelInput ? modelInput.value : "",
+        base_url: baseInput ? baseInput.value : ""
+      }).then(function (res) {
         keyInput.value = "";
         busy(btn, false);
         var code = (res.data && res.data.code) || "";

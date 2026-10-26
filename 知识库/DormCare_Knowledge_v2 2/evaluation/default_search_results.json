@@ -1,0 +1,202 @@
+[
+  {
+    "query": "网线接上电脑还是说没连接，接口灯不亮",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "我们宿舍好几个人的无线网一起连不上",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "柜子挡住了宿舍的无线设备，信号很弱",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "开着代理后学校网页打不开了",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "空调遥控按了没有反应，是不是电池的问题",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "冷气风越来越小，不怎么凉",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "空调刚启动时里面咕噜咕噜响",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "空调导风板挂水珠并往下滴",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "想预约空调滤网和内部积尘清洗",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "公共洗衣机一甩干就移位晃动，衣服团成一团",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "洗衣机没选程序放了一会就自己关机",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "洗衣机的按键按下不太灵敏",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "水龙头表面可以用粗颗粒清洁粉吗",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "TBW08407花洒接管漏水还有松动",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "TBW08408恒温花洒水温突然很烫",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "墙上插座插头插不紧还有发烫",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "插线板电线外皮破了，能不能拉着线拔",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "学校设施、弱电和宿舍的报修分别归谁",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "道扬宿舍门锁损坏可不可以自己换锁",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "道扬公共洗衣房的设备能自行拆下来吗",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "沙发支脚和螺丝松了，坐下有响声",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "我书桌的抽屉完全拉不开了",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "椅子的升降坏了坐上去往下掉",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "上铺床的护栏和爬梯松动",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "衣柜挂衣杆断裂，门也快掉了",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "灯一直闪，其他灯是正常的",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "柜锁卡死了，抽屉导轨也松了",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "洗手池下方的水管接头一直漏水",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "卫生间马桶不停进水，地漏也排水慢",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "电热水器开着却不加热，需要我补什么信息",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "房间窗户关不严，把手转不动",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "地板翘起来了，旁边墙砖也松了",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "窗帘拉不动，轨道似乎快掉了",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "洗衣机显示E1但我不知道是什么牌子",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "书院修空调师傅到底几点能来，多久修好",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "有照片但型号看不清，可以直接判断零件坏了吗",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "热水器不知道怎么用，有维修人员的操作视频吗",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "热水器按了电源键后显示42，这能证明热水正常吗",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "热水器不出热水，先看使用指南还是直接认为需要维修",
+    "status": "prototype_evidence",
+    "passed": true
+  },
+  {
+    "query": "我想看热水器工作人员发来的操作视频和说明图",
+    "status": "prototype_evidence",
+    "passed": true
+  }
+]

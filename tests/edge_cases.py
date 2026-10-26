@@ -245,8 +245,10 @@ def main():
         s, e = anon.call("/api/setup", {"key": "sk-not-a-real-key-000000000000"})
         print("  anonymous enrollment -> %d %s (refused)" % (s, e.get("code")))
         assert s == 401
-        s, e = call("/api/setup", {"key": "sk-not-a-real-key-000000000000"})
-        print("  signed-in bogus key enrollment -> %d %s" % (s, e.get("code")))
+        s, e = call("/api/setup", {"key": "sk-not-a-real-key-000000000000",
+                                   "provider": "openrouter"})
+        print("  student key enrollment -> %d %s (admin only)" % (s, e.get("code")))
+        assert s == 403 and e.get("code") == "forbidden"
 
         print("\n  ALL OFFLINE PATHS WORK — a model outage never blocks a repair request.")
     finally:

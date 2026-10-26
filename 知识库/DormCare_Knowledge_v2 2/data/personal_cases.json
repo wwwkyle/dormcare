@@ -1,0 +1,22 @@
+[
+  {
+    "case_id": "CASE-HEATER-001",
+    "title": "我收集的热水器使用指南",
+    "collector_account": "我在实际经历中收到维修人员发来的操作视频和图片，将它们整理为使用指南，帮助先确认使用方法，避免直接把不会使用认定为设备故障。",
+    "incident_date": "未记录",
+    "problem_resolution": "未提供完整报修及修复结论，不补写",
+    "evidence_source_ids": [
+      "E01",
+      "E02",
+      "E03"
+    ],
+    "chunk_ids": [
+      "R-HEATER-USE-01",
+      "R-HEATER-VALVE-01"
+    ],
+    "installation_id": "personal_heater_case_01",
+    "site_binding_status": "awaiting_on_site_confirmation",
+    "phone_contact_id": "CONTACT-GAS-01",
+    "not_a_complete_repair_work_order": true
+  }
+]

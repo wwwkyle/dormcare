@@ -12,7 +12,7 @@
 cd dormcare
 python app.py                                    # http://localhost:3000
 python app.py --api-key sk-or-v1-xxxxxxxx        # 或直接传入密钥
-export OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx      # 或用环境变量
+export OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx      # OpenRouter；也可用 OPENAI_API_KEY + OPENAI_BASE_URL
 ```
 
 **先登录。** 只有一个入口，所有人从登录页进去；进去之后是**哪个界面，由账号的角色决定，
@@ -41,7 +41,7 @@ docker run -p 3000:3000 -v dormcare-data:/data \
 - `DORMCARE_TRUST_PROXY=1`：平台通过反向代理转发时启用，使服务端识别公网 Host/HTTPS。
 - `DORMCARE_COOKIE_SECURE=1`：公网 HTTPS 部署必须启用，确保登录 Cookie 只经 HTTPS 发送。
 - 将持久化磁盘挂载到 `/data`，否则平台重启后新注册账号和工单可能丢失。
-- 可选配置 `OPENROUTER_API_KEY`；不配置时登录、报修和排班仍可使用规则降级模式。
+- 可选配置 `OPENAI_API_KEY`（配 `OPENAI_BASE_URL`）或 `OPENROUTER_API_KEY`；不配置时登录、报修和排班仍可使用规则降级模式。学生端维修建议仍会检索随项目附带的宿舍知识库。
 
 不要把 `DORMCARE_PUBLIC_ORIGINS` 配成 `*`。服务端仍会拒绝未配置的跨站来源，
 只是不再把经过受信反向代理的真实用户误判为「请求来源不被信任」。
@@ -69,8 +69,7 @@ docker run -p 3000:3000 -v dormcare-data:/data \
 师傅与管理员账号都不开放注册：一个能读到别人房间号和电话的账号应当是**发放**的，
 不该是自取，也不该是自己能注册的。
 
-若未配置密钥，页面底部会出现「启用模型密钥」输入框（需登录后可见），
-粘贴 OpenRouter 密钥即可（密钥只存在服务端进程内存中，不落盘、不进前端）。
+若未配置密钥，**管理员**页面底部会出现「启用模型密钥」。可选 OpenRouter、OpenAI、DeepSeek、月之暗面、智谱、硅基流动、通义千问，或一个 https 的 OpenAI 兼容地址。学生端和师傅端不能配置密钥。密钥只存在服务端进程内存中，不落盘、不进前端。
 
 > 演示数据是**一个账号一间房**。之前 10 张工单全挂在 `2024001` 名下、横跨 9 个书院，
 > 那是因为地址字段不跟账号校验；现在地址是账号的属性，演示数据也必须拆成
@@ -815,8 +814,11 @@ base64 解码后大小和 PNG/JPEG magic bytes，客户端 MIME 声明不能绕�
   Docker 默认因此为 `/data/uploads`，与 Store 一起落在持久卷。
 - `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`：OpenAI 兼容接口。
   `OPENAI_BASE_URL` 应为包含 `/v1` 的基地址，服务端追加 `/chat/completions`。
-- `OPENROUTER_API_KEY`、`OPENROUTER_MODEL`：继续兼容；OpenAI 变量优先。
+  只有 `OPENAI_API_KEY`、没有基地址时，默认使用 `https://api.openai.com/v1`。
+- `OPENROUTER_API_KEY`、`OPENROUTER_MODEL`：继续兼容；同时存在时 OpenAI 变量优先。
   API Key 只在环境变量或进程内存中，绝不写入 Store。
+  页面登记密钥只对管理员开放，并可选上述兼容服务或自定义 https 根地址。
+- 学生每次询问如何维修时，都会重新检索 `知识库/` 里的 `chunks.jsonl` 与 `sources.json`（角色、书院、装置范围与燃气/电气安全规则与知识库包一致；排序使用其中的 BM25，不下载向量模型）。要求生成工单时不走这套维修建议检索。
 
 本地验证：
 

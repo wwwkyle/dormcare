@@ -1,0 +1,34 @@
+{
+  "case_id": "CASE-HEATER-001",
+  "duration_seconds": 27.143084,
+  "review_basis": "我按可见画面记录，不补写含糊语音和未出现的动作。",
+  "timeline": [
+    {
+      "seconds": "0–7",
+      "observation": "手指按下面板右侧电源键，随后面板显示42。",
+      "not_established": "未测量出水温度，未确认完整型号。"
+    },
+    {
+      "seconds": "8–14",
+      "observation": "镜头展示黄色软管、黑色手柄和管道上的红色部件。",
+      "not_established": "未据此认定各部件功能、阀门开关方向或复位方法。"
+    },
+    {
+      "seconds": "15–16",
+      "observation": "镜头移到窗户附近。",
+      "not_established": "未据此认定已满足该型号的安装和通风要求。"
+    },
+    {
+      "seconds": "17–20",
+      "observation": "镜头展示水龙头及出水。",
+      "not_established": "未证明实际出水温度或故障已修复。"
+    },
+    {
+      "seconds": "21–27",
+      "observation": "镜头回到面板，画面仍显示42。",
+      "not_established": "不能仅凭面板显示排除全部故障。"
+    }
+  ],
+  "image_caption_original": "黄色是燃气的开关，横着是打开工作状态",
+  "image_video_same_installation": "未确认"
+}

@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-25",
+  "fixture_sha256": "d54c6976360badf7dff13036db396d855b056ac0f9a07aae563802723222c7aa",
+  "retrieval": {
+    "keyword": {
+      "n": 40,
+      "hit_at_1": 0.95,
+      "hit_at_3": 1.0,
+      "mrr_at_3": 0.9708333333333334
+    },
+    "dense": {
+      "n": 40,
+      "hit_at_1": 0.95,
+      "hit_at_3": 0.975,
+      "mrr_at_3": 0.9583333333333333
+    },
+    "hybrid": {
+      "n": 40,
+      "hit_at_1": 0.9,
+      "hit_at_3": 1.0,
+      "mrr_at_3": 0.95
+    }
+  },
+  "behavior_passes": 22,
+  "behavior_total": 22,
+  "controls_passes": 14,
+  "controls_total": 14,
+  "default_search_passes": 40,
+  "default_search_total": 40,
+  "scope": "我用构造题检查检索与处理规则。我同时整理了语料和题目，因此这些结果不是独立盲测；我尚未进行真实用户测试或完整生成回答评估。新增亲历资料也不等同于维修效果验证。"
+}

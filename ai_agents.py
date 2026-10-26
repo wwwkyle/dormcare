@@ -25,6 +25,7 @@ import json
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from config import (COLLEGES, REPAIR_TYPES, REPAIR_BY_ID, TRAVEL_RULES,
@@ -34,6 +35,48 @@ from scheduler import PRIORITY_LEVELS
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "deepseek/deepseek-chat"
+# Empty base means the OpenRouter URL above. Anything else is an OpenAI-compatible root;
+# call_model appends /chat/completions.
+API_BASE = ""
+API_BASE_SET = False
+PROVIDERS = {
+    "openrouter": {"base": "", "model": DEFAULT_MODEL},
+    "openai": {"base": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
+    "deepseek": {"base": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
+    "moonshot": {"base": "https://api.moonshot.cn/v1", "model": "moonshot-v1-8k"},
+    "zhipu": {"base": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4-flash"},
+    "siliconflow": {"base": "https://api.siliconflow.cn/v1", "model": "deepseek-ai/DeepSeek-V3"},
+    "dashscope": {"base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
+    "custom": {"base": None, "model": ""},
+}
+
+
+def set_api_base(url):
+    """Process-wide upstream root. Empty keeps the OpenRouter endpoint."""
+    global API_BASE, API_BASE_SET
+    API_BASE = (url or "").strip().rstrip("/")
+    API_BASE_SET = True
+
+
+def configured_base():
+    if API_BASE_SET:
+        return API_BASE
+    return (os.environ.get("OPENAI_BASE_URL") or "").strip().rstrip("/")
+
+
+def valid_custom_base(url):
+    parsed = urllib.parse.urlparse((url or "").strip())
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        return False
+    if host in ("localhost", "0.0.0.0") or host.endswith(".local"):
+        return False
+    if host.startswith("127.") or host.startswith("169.254.") or host == "169.254.169.254":
+        return False
+    return True
+
+
+_MODEL_RE = re.compile(r"^[\w./:@+\-]{1,120}$")
 
 MAX_TOKENS = 900
 TEMPERATURE = 0.2          # low: we want classification, not creativity
@@ -139,7 +182,7 @@ def call_model(api_key, model, messages, *, max_tokens=MAX_TOKENS,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
-    base = (os.environ.get("OPENAI_BASE_URL") or "").strip().rstrip("/")
+    base = configured_base()
     url = (base + "/chat/completions") if base else OPENROUTER_URL
     req = urllib.request.Request(
         url,

@@ -1,0 +1,121 @@
+[
+  {
+    "category_id": "desk",
+    "name_zh": "书桌",
+    "name_en": "Desk",
+    "description": "抽屉卡滞、桌板松动、桌面破损更换",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "chair",
+    "name_zh": "椅子",
+    "name_en": "Chair",
+    "description": "气压杆失效、脚轮损坏、靠背断裂",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "bed",
+    "name_zh": "床架 / 床板",
+    "name_en": "Bed frame / slats",
+    "description": "床板断裂、护栏松脱、爬梯加固",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "wardrobe",
+    "name_zh": "衣柜",
+    "name_en": "Wardrobe",
+    "description": "柜门脱落、合页损坏、挂杆断裂",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "ac",
+    "name_zh": "空调",
+    "name_en": "Air conditioner",
+    "description": "不制冷、漏水、异响、遥控失灵",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "ac_service",
+    "name_zh": "空调深度清洗保养",
+    "name_en": "AC deep clean & service",
+    "description": "滤网清洗、蒸发器除霉、风轮除尘",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "light",
+    "name_zh": "灯具 / 照明",
+    "name_en": "Lighting",
+    "description": "灯管不亮、开关失灵、灯罩破损",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "furniture",
+    "name_zh": "家具五金",
+    "name_en": "Furniture hardware",
+    "description": "抽屉导轨、柜锁、五金件松动更换",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "plumbing",
+    "name_zh": "水管 / 下水道",
+    "name_en": "Plumbing / drainage",
+    "description": "漏水、下水道堵塞、水龙头滴水",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "bathroom",
+    "name_zh": "卫生间洁具",
+    "name_en": "Bathroom fixtures",
+    "description": "花洒、马桶水箱、地漏、洗手台",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "power",
+    "name_zh": "电路 / 插座",
+    "name_en": "Electrical / sockets",
+    "description": "插座无电、跳闸、开关面板损坏",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "network",
+    "name_zh": "网络 / 网口",
+    "name_en": "Network / LAN port",
+    "description": "网口不通、水晶头损坏、弱电箱整改",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "appliance",
+    "name_zh": "家电（热水器 / 洗衣机）",
+    "name_en": "Appliance (heater / washer)",
+    "description": "热水器不加热、洗衣机不脱水、按键失灵",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "door",
+    "name_zh": "门 / 门锁 / 窗",
+    "name_en": "Door, lock & window",
+    "description": "门锁卡死、闭门器失效、窗户关不严",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "floor",
+    "name_zh": "地板 / 墙砖",
+    "name_en": "Floor & wall tiles",
+    "description": "地板起翘、瓷砖空鼓脱落、踢脚线松脱",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "curtain",
+    "name_zh": "窗帘 / 窗帘轨道",
+    "name_en": "Curtains & track",
+    "description": "轨道脱落、拉绳卡住、遮光帘破损",
+    "coverage": "intake_template_available_repair_depth_varies"
+  },
+  {
+    "category_id": "other",
+    "name_zh": "其他报修",
+    "name_en": "Other",
+    "description": "未列入以上类别的报修，按 60 分钟预排",
+    "coverage": "intake_template_available_repair_depth_varies"
+  }
+]

@@ -175,10 +175,30 @@ def main():
             "id": advice_id, "action": "self_help"})
         ok("advice starts only after A is selected",
            s == 200 and advice["stage"] == "advice" and advice["self_help"])
-        ok("empty KB never masquerades as a hit",
-           advice["kb_status"] == "empty" and
-           advice["solution"]["source"] == "fallback" and
-           advice["solution"]["safety_reviewed"])
+        ok("network advice is grounded in the knowledge base",
+           advice["kb_status"] == "hit" and
+           advice["solution"]["source"] == "knowledge" and
+           advice["self_help"] and
+           "R-NET" in "".join(advice["solution"].get("chunk_ids") or []) and
+           "来源" in advice["self_help"][0])
+        s, live_session = stu.call("/api/agent/session", {"lang": "zh"})
+        live_id = live_session["session"]["id"]
+        s, asked = stu.call("/api/agent/message", {
+            "id": live_id, "text": "空调不制冷，滤网看起来有灰，我该怎么修"})
+        ok("asking how to repair searches the knowledge base immediately",
+           s == 200 and asked["stage"] == "advice" and asked["kb_status"] == "hit" and
+           asked["solution"]["source"] == "knowledge")
+        s, asked_again = stu.call("/api/agent/message", {
+            "id": live_id, "text": "遥控器也没反应，还有什么可以先检查"})
+        ok("each repair question searches again",
+           s == 200 and asked_again["stage"] == "advice" and
+           asked_again["kb_status"] == "hit" and
+           asked_again["solution"]["chunk_ids"] != asked["solution"]["chunk_ids"])
+        s, ticket_instead = stu.call("/api/agent/message", {
+            "id": live_id, "text": "请生成工单"})
+        ok("asking for a ticket does not return repair-guide steps",
+           s == 200 and ticket_instead["stage"] != "advice" and
+           (ticket_instead.get("solution") or {}).get("source") != "knowledge")
         s, advice_follow_1 = stu.call("/api/agent/message", {
             "id": advice_id, "lang": "zh", "text": "路由器的复位按钮在哪里？"})
         s2, advice_follow_2 = stu.call("/api/agent/message", {
@@ -201,13 +221,13 @@ def main():
         s, no_hit_session = stu.call("/api/agent/session", {"lang": "zh"})
         no_hit_id = no_hit_session["session"]["id"]
         stu.call("/api/agent/message", {
-            "id": no_hit_id, "text": "宿舍插座完全没有电，其他插座正常，外观没有异常"})
+            "id": no_hit_id, "text": "衣柜柜门合页松了，柜门下垂，我没有再去拉"})
         s, no_hit = stu.call("/api/agent/message", {
             "id": no_hit_id, "action": "self_help"})
-        ok("KB no-hit explicitly routes back to ticket creation",
+        ok("KB without a repair procedure routes back to ticket creation",
            s == 200 and no_hit["stage"] == "no_solution" and
-           no_hit["kb_status"] == "empty" and no_hit["solution"] is None and
-           no_hit["draft"]["repair_type"] == "power")
+           no_hit["kb_status"] == "no_procedure" and no_hit["solution"] is None and
+           no_hit["draft"]["repair_type"] == "wardrobe")
         s, zh_switch_session = stu.call("/api/agent/session", {"lang": "zh"})
         zh_switch_id = zh_switch_session["session"]["id"]
         stu.call("/api/agent/message", {

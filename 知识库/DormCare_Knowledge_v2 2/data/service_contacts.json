@@ -1,0 +1,18 @@
+[
+  {
+    "contact_id": "CONTACT-GAS-01",
+    "label": "燃气工作人员",
+    "phone": "13410092142",
+    "service": "热水器使用／燃气业务咨询",
+    "source_id": "E03",
+    "case_id": "CASE-HEATER-001",
+    "installation_id": "personal_heater_case_01",
+    "allowed_roles": [
+      "student",
+      "worker",
+      "admin"
+    ],
+    "status": "我保存的业务联系记录，服务范围与接听时间待确认",
+    "is_emergency_hotline": false
+  }
+]

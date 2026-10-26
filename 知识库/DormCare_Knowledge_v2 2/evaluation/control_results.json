@@ -1,0 +1,58 @@
+[
+  {
+    "check": "role_filter_student",
+    "passed": true
+  },
+  {
+    "check": "role_filter_worker",
+    "passed": true
+  },
+  {
+    "check": "role_filter_admin",
+    "passed": true
+  },
+  {
+    "check": "model_specific_excluded_without_exact_model",
+    "passed": true
+  },
+  {
+    "check": "other_model_cannot_receive_TOTO_TBW08407",
+    "passed": true
+  },
+  {
+    "check": "historical_college_rule_excluded_without_ling",
+    "passed": true
+  },
+  {
+    "check": "private_books_not_indexed",
+    "passed": true
+  },
+  {
+    "check": "all_17_categories_have_intake_templates",
+    "passed": true
+  },
+  {
+    "check": "vector_norms_finite_and_unit",
+    "passed": true
+  },
+  {
+    "check": "heater_valve_excluded_without_installation",
+    "passed": true
+  },
+  {
+    "check": "heater_valve_excluded_for_other_installation",
+    "passed": true
+  },
+  {
+    "check": "heater_valve_included_only_for_confirmed_installation",
+    "passed": true
+  },
+  {
+    "check": "staff_phone_not_in_vectors",
+    "passed": true
+  },
+  {
+    "check": "personal_case_links_to_original_media",
+    "passed": true
+  }
+]

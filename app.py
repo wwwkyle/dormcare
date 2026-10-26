@@ -39,7 +39,7 @@ Students, technicians and administrators sign in (see auth.py) and the server
 
 Every endpoint checks the session before it touches data, and the three
 consoles are separate pages that each redirect a visitor of the wrong role
-away. The key enrolment endpoint requires a signed-in user.
+away. The key enrolment endpoint accepts an administrator only.
 
 Security
 --------
@@ -74,8 +74,8 @@ import ai_agents
 import auth
 import intake_agent
 from ai_agents import (AIError, DEFAULT_MODEL, MSG_NOT_IN_KB, MSG_OUT_OF_SCOPE,
-                       advise_dispatch, advise_student, parse_intake,
-                       summarize_plan, verify_key)
+                       PROVIDERS, advise_dispatch, advise_student, parse_intake,
+                       set_api_base, summarize_plan, valid_custom_base, verify_key)
 from auth import (ANY_ROLE, HOME_BY_ROLE, MAX_DORM, MAX_NAME, MAX_PHONE,
                   MAX_TRADE, MAX_USERNAME, MENU_PATH, ROLE_ADMIN, ROLE_STUDENT,
                   ROLE_WORKER, SESSION_COOKIE, SESSION_DAYS, clean_name,
@@ -943,6 +943,7 @@ class Handler(BaseHTTPRequestHandler):
 
     api_key = ""
     key_source = ""            # "env" | "enrolled" | ""
+    provider = ""
     model = DEFAULT_MODEL
 
     # ---- plumbing --------------------------------------------------------- #
@@ -1075,7 +1076,9 @@ class Handler(BaseHTTPRequestHandler):
                 "app": "DormCare",
                 "model": self.model,
                 "key_configured": bool(self.api_key),
-                "enrollable": self.key_source != "env" and not self.api_key,
+                "enrollable": (self.key_source != "env" and not self.api_key
+                               and bool(self.user) and self.user.get("role") == ROLE_ADMIN),
+                "provider": self.provider or "",
                 "tickets": len(STORE.tickets()),
                 "workers": len(STORE.workers()),
                 "date_today": date.today().isoformat(),
@@ -1639,38 +1642,69 @@ class Handler(BaseHTTPRequestHandler):
     # ---- key enrollment --------------------------------------------------- #
 
     def _api_setup(self, body, ip):
-        # Signing in first is the only thing standing between the course model
-        # key and whoever happens to load the page first.
-        if not self._require():
+        # Only an administrator may place a model key into this process.
+        if not self._require(ROLE_ADMIN):
             return
         if self.key_source == "env":
             self._err(409, "setup_disabled_env",
                       "This server was started with a key in its environment.")
+            return
+        provider = body.get("provider") or "openrouter"
+        if provider not in PROVIDERS:
+            self._err(400, "setup_bad_provider", "Unknown model provider.")
             return
         candidate = body.get("key")
         if not isinstance(candidate, str):
             self._err(400, "setup_missing_key", "Missing key.")
             return
         candidate = candidate.strip()
-        if len(candidate) < 20 or not candidate.startswith("sk-"):
+        if (len(candidate) < 16 or len(candidate) > 400 or
+                any(ch.isspace() for ch in candidate)):
             self._err(400, "setup_not_a_key", "That does not look like an API key.")
+            return
+        spec = PROVIDERS[provider]
+        if provider == "custom":
+            base = body.get("base_url") if isinstance(body.get("base_url"), str) else ""
+            if not valid_custom_base(base):
+                self._err(400, "setup_bad_base",
+                          "Custom endpoints must be an https URL with no embedded credentials.")
+                return
+            base = base.strip().rstrip("/")
+        else:
+            base = spec["base"]
+        model = body.get("model") if isinstance(body.get("model"), str) else ""
+        model = model.strip()
+        if model and not ai_agents._MODEL_RE.match(model):
+            self._err(400, "setup_bad_model", "That model name is not valid.")
+            return
+        if not model:
+            model = spec["model"] or self.model
+        if not model:
+            self._err(400, "setup_bad_model", "A model name is required for this provider.")
             return
         if Handler.api_key:
             self._err(409, "setup_already_enrolled", "A key is already enrolled.")
             return
+        previous = (Handler.api_key, Handler.key_source, Handler.model,
+                    Handler.provider, ai_agents.API_BASE, ai_agents.API_BASE_SET)
         Handler.api_key = candidate
         Handler.key_source = "enrolled"
-        verdict = verify_key(candidate, self.model)
+        Handler.model = model
+        Handler.provider = provider
+        set_api_base(base)
+        verdict = verify_key(candidate, model)
         if verdict == "auth":
-            Handler.api_key = ""
-            Handler.key_source = ""
+            (Handler.api_key, Handler.key_source, Handler.model,
+             Handler.provider, ai_agents.API_BASE, ai_agents.API_BASE_SET) = previous
             self._err(400, "setup_rejected", "The provider rejected this key (401/403).")
             return
         if verdict == "unavailable":
             self._json(200, {"ok": True, "verified": False, "code": "setup_unverified",
+                             "provider": provider, "model": model,
                              "message": "Key enrolled but not verified."})
             return
         self._json(200, {"ok": True, "verified": True, "code": "setup_ok",
+                         "provider": provider, "model": model,
                          "message": "Key enrolled and verified."})
 
     # ---- student: AI intake ---------------------------------------------- #
@@ -1896,11 +1930,16 @@ class Handler(BaseHTTPRequestHandler):
             # Replacing (rather than unioning) also makes preview deletion real.
             "image_ids": list(dict.fromkeys(clean_images)),
         })
+        wants_ticket = force_draft or intake_agent.student_wants_ticket(text)
+        wants_advice = (not wants_ticket) and (
+            action == "self_help"
+            or session.get("active_route") == "self_help"
+            or intake_agent.student_wants_advice(text))
         result = intake_agent.respond(self.api_key, self.model, session, user,
                                       lang, STORE, UPLOAD_DIR,
-                                      force_draft=force_draft,
-                                      advice_mode=(action == "self_help"))
-        if first_turn:
+                                      force_draft=wants_ticket,
+                                      advice_mode=wants_advice)
+        if first_turn and not wants_ticket and not wants_advice:
             result.update({
                 "reply": ("已完成初步识别。请选择“提供维修建议”或“生成工单”。"
                           if lang == "zh" else
@@ -1914,36 +1953,6 @@ class Handler(BaseHTTPRequestHandler):
                      "recommended": bool(result.get("emergency"))},
                 ],
                 "active_route": "",
-            })
-        elif action == "self_help" and result.get("emergency"):
-            tips = ([
-                "立即停止使用并远离故障点；不要触碰、拆卸或尝试维修。",
-                "在确保自身安全的前提下关闭电源或阀门；如有烟火、燃气味或人员危险，立即撤离。",
-                "立即联系校园保卫、宿管或物业紧急人员，并可随时生成工单。",
-            ] if lang == "zh" else [
-                "Stop using the area, keep away, and do not touch, open, or repair it.",
-                "Only if safe, cut power or close the valve; evacuate for smoke, gas, fire, or danger to people.",
-                "Contact campus security, residence staff, or emergency property staff now; you can still create a ticket.",
-            ])
-            result.update({
-                "reply": tips[0], "stage": "advice", "state": "advice",
-                "complete": False, "ready": False, "self_help": tips,
-                "solution": {"source": "safety_fallback",
-                             "safety_reviewed": True,
-                             "steps": [{"text": tip, "image_url": None}
-                                       for tip in tips]},
-                "missing": [], "next_question": None, "question_options": [],
-                "active_route": "self_help",
-            })
-        if action == "self_help" and result.get("stage") != "advice":
-            result.update({
-                "reply": ("知识库当前为空，暂无合适方案。你可以直接生成工单，识别结果和图片都会保留。"
-                          if lang == "zh" else
-                          "The knowledge base is empty and no suitable solution is available. You can create a ticket without losing the result or images."),
-                "stage": "no_solution", "state": "no_solution",
-                "complete": False, "solution": None, "self_help": [],
-                "missing": [], "next_question": None, "question_options": [],
-                "active_route": "self_help",
             })
         if session.get("draft") and result.get("draft") and (
                 force_draft or result.get("stage") in ("advice", "no_solution")):
@@ -3059,11 +3068,13 @@ def _local_rationale(day, jobs, stats, lang):
 # Entry point
 # --------------------------------------------------------------------------- #
 
-def configure(api_key=None, model=None):
+def configure(api_key=None, model=None, base_url=None, provider=None):
     Handler.api_key = (api_key or "").strip()
     Handler.key_source = "env" if Handler.api_key else ""
+    Handler.provider = provider or ""
     Handler.model = (model or os.environ.get("OPENAI_MODEL")
                      or os.environ.get("OPENROUTER_MODEL") or DEFAULT_MODEL).strip()
+    set_api_base(base_url if base_url is not None else os.environ.get("OPENAI_BASE_URL"))
     ensure_seed()
     return Handler
 
@@ -3078,8 +3089,24 @@ def resolve_api_key(argv):
             or os.environ.get("OPENROUTER_API_KEY") or "").strip()
 
 
+def resolve_upstream(argv):
+    """Key plus the OpenAI-compatible root implied by the environment."""
+    key = resolve_api_key(argv)
+    base = (os.environ.get("OPENAI_BASE_URL") or "").strip()
+    provider = ""
+    if base:
+        provider = "custom"
+    elif os.environ.get("OPENAI_API_KEY") and not os.environ.get("OPENROUTER_API_KEY"):
+        base = "https://api.openai.com/v1"
+        provider = "openai"
+    elif key:
+        provider = "openrouter"
+    return key, base, provider
+
+
 def main():
-    configure(resolve_api_key(sys.argv[1:]))
+    key, base, provider = resolve_upstream(sys.argv[1:])
+    configure(key, base_url=base, provider=provider)
     try:
         port = int(os.environ.get("PORT") or 3000)
     except ValueError:

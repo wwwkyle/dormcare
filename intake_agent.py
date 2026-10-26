@@ -9,13 +9,14 @@ from agent_prompts import intake_prompt
 from agent_tools import (build_draft, confidence_for, next_question_for,
                          validate_draft)
 from ai_agents import SELF_HELP, call_model
+from knowledge_base import advice_for_student
 
 
 SAFE_SELF_HELP_TYPES = {
     "desk", "chair", "wardrobe", "network", "curtain", "door",
 }
 
-KB_STATUS = "empty"
+KB_STATUS = "ready"
 
 UNRESOLVED_WORDS = (
     "未解决", "没恢复", "没有恢复", "还是不行", "仍然", "无效",
@@ -53,7 +54,7 @@ def _enrich(result, session, draft, lang):
         "contract_version": 2,
         "emergency": emergency,
         "confidence": confidence_for(session.get("history") or [], draft),
-        "kb_status": KB_STATUS,
+        "kb_status": result.get("kb_status") or KB_STATUS,
         "route_options": result.get("route_options") or (
             [{"id": "smart_repair", "enabled": True, "recommended": True}]
             if advice_state else [
@@ -96,12 +97,73 @@ def _advice(draft, lang):
     }
 
 
-def _advice_turn(draft, lang, text="", emergency=False):
-    """Conservative, repeatable advice for every turn in the advice route."""
+_TICKET_INTENT = re.compile(
+    r"生成工单|创建工单|提交工单|我要报修|转为报修|帮我报修|"
+    r"create a ticket|file a ticket|submit a ticket",
+    re.I)
+_ADVICE_INTENT = re.compile(
+    r"怎么修|如何修|怎样修|怎么处理|如何处理|怎么办|维修建议|自己修|如何维修|怎么维修|"
+    r"how to (?:fix|repair)|how do i (?:fix|repair)|repair advice|what should i do",
+    re.I)
+
+
+def student_wants_ticket(text):
+    return bool(_TICKET_INTENT.search(text or ""))
+
+
+def student_wants_advice(text):
+    return bool(_ADVICE_INTENT.search(text or ""))
+
+
+def _retrieval_query(history, text):
+    """The latest utterance, plus the previous fault when this turn is a short follow-up."""
+    latest = (text or "").strip()
+    prior = []
+    for item in history or []:
+        if item.get("role") != "user":
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        if content == latest:
+            continue
+        prior.append(content)
+    if not latest and prior:
+        latest = prior.pop()
+    follow = (len(latest) < 18 or bool(re.search(
+        r"这个|那个|还是|哪里|安全|按钮|怎么|如何|where|safe|still|button", latest, re.I)))
+    if follow and prior:
+        return (prior[-1] + " " + latest)[:2000]
+    return latest[:2000]
+
+
+def _no_solution(draft, lang, message, kb_status):
+    return {
+        "reply": message, "stage": "no_solution", "state": "no_solution",
+        "complete": False, "draft": draft,
+        "detected": {"repair_type": draft.get("repair_type"),
+                     "priority": draft.get("priority")},
+        "missing": [], "self_help": [], "safety_warning": "",
+        "source": "knowledge", "kb_status": kb_status, "solution": None,
+        "route_options": [{"id": "smart_repair", "enabled": True, "recommended": True}],
+        "active_route": "self_help",
+    }
+
+
+def _advice_turn(draft, lang, text="", emergency=False, user=None, history=None):
+    """Advice grounded in the dorm knowledge base, with a conservative fallback."""
     low = (text or "").lower()
     unresolved = any(word in low for word in UNRESOLVED_WORDS)
-    if emergency:
-        tips = ([
+    query = _retrieval_query(history, text)
+    found = advice_for_student(
+        query or (draft.get("description") or ""), user or {"role": "student"},
+        category=draft.get("repair_type"), lang=lang) if query or draft.get("description") else {
+            "status": "insufficient_evidence", "kb_status": "no_hit",
+            "message": "", "steps": [],
+        }
+    kb_urgent = found.get("status") in ("urgent_gas", "urgent_manual")
+    if kb_urgent or emergency:
+        generic = ([
             "立即停止使用并远离故障点，不要触碰、拆卸或尝试维修。",
             "仅在无需靠近故障点且能安全操作时关闭总电源或总阀；有烟火、燃气味或人员危险时立即撤离。",
             "联系校园保卫、宿管或物业紧急人员；如需记录和跟进，请点击“生成工单”。",
@@ -110,41 +172,83 @@ def _advice_turn(draft, lang, text="", emergency=False):
             "Only if safely reachable away from the fault, cut main power or close the main valve; evacuate for smoke, fire, gas, or danger to people.",
             "Contact campus security, residence staff, or emergency property staff; use Create ticket if tracking is needed.",
         ])
-        reply = tips[0]
-        source = "safety_fallback"
-    else:
-        if draft.get("repair_type") not in SAFE_SELF_HELP_TYPES:
-            return None
-        tips = list(SELF_HELP.get(draft.get("repair_type"), {}).get(lang, []))[:3]
-        if not tips:
-            return None
+        tips = generic
+        reply = (found.get("message") if kb_urgent else "") or tips[0]
+        if lang == "en" and re.search(r"[\u3400-\u9fff]", reply):
+            reply = tips[0]
+        return {
+            "reply": reply, "stage": "advice", "state": "advice",
+            "complete": False, "draft": draft,
+            "detected": {"repair_type": draft.get("repair_type"),
+                         "priority": draft.get("priority")},
+            "missing": [], "self_help": tips,
+            "safety_warning": tips[0],
+            "source": "rules",
+            "kb_status": found.get("kb_status") or "hit",
+            "solution": {"source": "safety_fallback",
+                         "safety_reviewed": True,
+                         "steps": [{"text": tip, "image_url": None} for tip in tips]},
+            "route_options": [{"id": "smart_repair", "enabled": True, "recommended": True}],
+            "active_route": "self_help",
+        }
+    steps = found.get("steps") or []
+    if steps:
+        tips = [step["text"] for step in steps]
         if unresolved:
-            reply = ("既然仍未恢复，请停止继续尝试并等待师傅处理。可点击“生成工单”，现有信息和图片会保留。"
+            reply = ("既然仍未恢复，请停止继续尝试并生成工单。下面是知识库里已有的保守提示，不要再扩大操作。"
                      if lang == "zh" else
-                     "Since it is still unresolved, stop further attempts and wait for a technician. Use Create ticket; your details and images will be kept.")
+                     "It is still unresolved, so stop and create a ticket. The notes below are only the conservative checks already in the knowledge base.")
         elif any(word in low for word in ("安全吗", "安全么", "safe", "dangerous")):
-            reply = ("只进行下列不拆机、不接触带电部件的步骤；如现场异常、步骤不明确或你感到不安全，请立即停止并等待师傅。"
+            reply = ("只参考知识库里这些不拆机、不接触带电或燃气部件的内容。现场不对、或你觉得不安全，就停止并生成工单。"
                      if lang == "zh" else
-                     "Only use the non-invasive steps below. Stop immediately and wait for a technician if anything looks abnormal, is unclear, or feels unsafe.")
+                     "Use only these knowledge-base checks. Do not open equipment or touch live or gas parts. Stop and create a ticket if anything feels unsafe.")
         else:
-            reply = ("可以继续按以下保守步骤排查；不要拆机或接触带电部件，不确定时请停止并等待师傅。"
+            reply = ("以下来自宿舍知识库（资料整理者收集，尚未现场审核，不是确诊）。只做不拆机的步骤；不确定就停止并生成工单。"
                      if lang == "zh" else
-                     "Continue only with these conservative checks. Do not open equipment or touch live parts; stop and wait for a technician if unsure.")
-        source = "fallback"
-    return {
-        "reply": reply, "stage": "advice", "state": "advice",
-        "complete": False, "draft": draft,
-        "detected": {"repair_type": draft.get("repair_type"),
-                     "priority": draft.get("priority")},
-        "missing": [], "self_help": tips,
-        "safety_warning": (tips[0] if emergency else ""),
-        "source": "rules",
-        "solution": {"source": source, "safety_reviewed": True,
-                     "steps": [{"text": tip, "image_url": None} for tip in tips]},
-        "route_options": [{"id": "smart_repair", "enabled": True,
-                           "recommended": bool(emergency or unresolved)}],
-        "active_route": "self_help",
-    }
+                     "These checks come from the dorm knowledge base. They are not a field-approved diagnosis. Do not open equipment; stop and create a ticket if unsure.")
+        return {
+            "reply": reply, "stage": "advice", "state": "advice",
+            "complete": False, "draft": draft,
+            "detected": {"repair_type": draft.get("repair_type"),
+                         "priority": draft.get("priority")},
+            "missing": [], "self_help": tips, "safety_warning": "",
+            "source": "knowledge", "kb_status": "hit",
+            "solution": {"source": "knowledge", "safety_reviewed": False,
+                         "chunk_ids": found.get("chunk_ids") or [],
+                         "steps": [{"text": step["text"], "image_url": None,
+                                    "chunk_id": step.get("chunk_id")} for step in steps]},
+            "route_options": [{"id": "smart_repair", "enabled": True,
+                               "recommended": unresolved}],
+            "active_route": "self_help",
+        }
+    if (draft.get("repair_type") in SAFE_SELF_HELP_TYPES and
+            found.get("status") in ("insufficient_evidence", "no_procedure", "no_hit", "out_of_scope")):
+        tips = list(SELF_HELP.get(draft.get("repair_type"), {}).get(lang, []))[:3]
+        if tips and found.get("status") != "no_procedure":
+            reply = ("知识库没有更贴切的条目，只能先给你这些不拆机的常规检查。不确定就停止并生成工单。"
+                     if lang == "zh" else
+                     "Nothing closer is in the knowledge base. These are only ordinary non-invasive checks. Stop and create a ticket if unsure.")
+            return {
+                "reply": reply, "stage": "advice", "state": "advice",
+                "complete": False, "draft": draft,
+                "detected": {"repair_type": draft.get("repair_type"),
+                             "priority": draft.get("priority")},
+                "missing": [], "self_help": tips, "safety_warning": "",
+                "source": "rules", "kb_status": found.get("kb_status") or "no_hit",
+                "solution": {"source": "fallback", "safety_reviewed": True,
+                             "steps": [{"text": tip, "image_url": None} for tip in tips]},
+                "route_options": [{"id": "smart_repair", "enabled": True,
+                                   "recommended": unresolved}],
+                "active_route": "self_help",
+            }
+    message = found.get("message") or (
+        "知识库里没有合适的自行处理步骤。请停止操作并生成工单，现有信息和图片会保留。"
+        if lang == "zh" else
+        "No suitable do-it-yourself steps are in the knowledge base. Stop and create a ticket; your details and images will be kept.")
+    if lang == "en" and re.search(r"[\u3400-\u9fff]", message):
+        message = ("No suitable do-it-yourself steps are in the knowledge base. "
+                   "Stop and create a ticket; your details and images will be kept.")
+    return _no_solution(draft, lang, message, found.get("kb_status") or "no_hit")
 
 
 def _model_messages(history, store, upload_dir):
@@ -184,24 +288,16 @@ def respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
     image_ids = session.get("image_ids") or []
     local_draft, enough, warning = build_draft(history, image_ids, user, lang)
     if advice_mode or (session.get("active_route") == "self_help" and not force_draft):
-        advice = _advice_turn(local_draft, lang,
-                              str(history[-1].get("content") or "") if history else "",
-                              bool(warning or local_draft.get("priority") == "urgent"))
-        if advice:
-            return _enrich(advice, session, local_draft, lang)
-        result = _fallback(local_draft, enough, warning, lang, force_draft)
-        result.update({
-            "reply": ("知识库当前为空，暂无合适方案。请停止自行处理并点击“生成工单”，现有信息和图片会保留。"
-                      if lang == "zh" else
-                      "No suitable knowledge-base guidance is available. Stop attempting repairs and use Create ticket; your details and images will be kept."),
-            "stage": "no_solution", "state": "no_solution", "complete": False,
-            "solution": None, "self_help": [], "missing": [],
-            "next_question": None, "question_options": [],
-            "route_options": [{"id": "smart_repair", "enabled": True,
-                               "recommended": True}],
-            "active_route": "self_help",
-        })
-        return _enrich(result, session, local_draft, lang)
+        latest = ""
+        for item in reversed(history):
+            if item.get("role") == "user":
+                latest = str(item.get("content") or "")
+                break
+        advice = _advice_turn(
+            local_draft, lang, latest,
+            bool(warning or local_draft.get("priority") == "urgent"),
+            user=user, history=history)
+        return _enrich(advice, session, local_draft, lang)
     if force_draft:
         return _enrich(
             _fallback(local_draft, enough, warning, lang, True),

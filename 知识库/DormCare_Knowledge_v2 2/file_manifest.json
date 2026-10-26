@@ -1,0 +1,202 @@
+[
+  {
+    "path": ".DS_Store",
+    "bytes": 14340,
+    "sha256": "888dd5323bab04785d9882466c65262bf465839d4d501e0e8ba6d0cc22d44107"
+  },
+  {
+    "path": ".Rhistory",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "assets/heater_case_01/我的资料核对记录.json",
+    "bytes": 1281,
+    "sha256": "b8b8e843363ae179882ab4fc19e4b51758a05326fe7baa3129cf5ef5e5b856ba"
+  },
+  {
+    "path": "assets/heater_case_01/水龙头出水.jpg",
+    "bytes": 58038,
+    "sha256": "ef197e176d64bf5ad1de6e7458659d6bf700ac07bfafac3ca086044368ed2da0"
+  },
+  {
+    "path": "assets/heater_case_01/热水器操作视频.mp4",
+    "bytes": 5602597,
+    "sha256": "0fc9b59278e7b2d1e087c90bbdc56a69aea5b19fc4e602ec3864484f65bc7cc3"
+  },
+  {
+    "path": "assets/heater_case_01/燃气阀门说明原图.jpg",
+    "bytes": 191618,
+    "sha256": "7a00e25d0791d8184f3be3fc659d1582810ba3068f647a8bf5fcc2ceb0dc240d"
+  },
+  {
+    "path": "assets/heater_case_01/管线及阀门位置.jpg",
+    "bytes": 52233,
+    "sha256": "eb94d79cce5fa7b3c98fed635ab75c2b4b6a03fad34500808c94cfe1e48f08f8"
+  },
+  {
+    "path": "assets/heater_case_01/面板显示42.jpg",
+    "bytes": 46505,
+    "sha256": "f5c8c829ebb1283c7d064560645c2daa7c7bf843c81da266c2f52173609b3036"
+  },
+  {
+    "path": "assets/heater_case_01/面板电源键.jpg",
+    "bytes": 51816,
+    "sha256": "d16576956fcf1345d0b1aae762ef7f8ee616e84fc283bf541877505838147e2d"
+  },
+  {
+    "path": "data/categories.json",
+    "bytes": 4059,
+    "sha256": "f203c087e7d9d9b7721cc5f04538902105474cda318736d62decf098bbaee9f3"
+  },
+  {
+    "path": "data/chunks.jsonl",
+    "bytes": 53766,
+    "sha256": "385c78c0aa6c686f34ab9e21a7c3ff61c0b980e186c286c4023401004658c357"
+  },
+  {
+    "path": "data/knowledge.sqlite",
+    "bytes": 225280,
+    "sha256": "b800b33002d9f5ab86df504b953c13c31999cb202b1baf078878604073e251c4"
+  },
+  {
+    "path": "data/personal_cases.json",
+    "bytes": 770,
+    "sha256": "d76e5c97b74a08c9a36ee83e51f1c57a7069e19a25fe5d20794c555978d9552b"
+  },
+  {
+    "path": "data/service_contacts.json",
+    "bytes": 471,
+    "sha256": "d68ccb0b36332fb3540596af3289c9091d9c38ee3c821c3d3e832109784a0d84"
+  },
+  {
+    "path": "data/sources.json",
+    "bytes": 14421,
+    "sha256": "a1da09bdbe9038c4afc85ad02f9bccc217418e3e7ee9a7d4c707a579c70f4d7b"
+  },
+  {
+    "path": "docs/接入提示词.txt",
+    "bytes": 1824,
+    "sha256": "0557e252f1ddb82fa347605e109b0105069e18b61d23498b1ef7e42c803e89b5"
+  },
+  {
+    "path": "docs/接入说明.md",
+    "bytes": 4160,
+    "sha256": "cbc84705bc6428f75470352a1bf3545edd118acec362c212dc6664345a9ecf16"
+  },
+  {
+    "path": "docs/数据字典与更新流程.md",
+    "bytes": 2366,
+    "sha256": "c85ad6c5bee1aaedfa72dd15df7b36eccdd36e33869c0dfdadf5f50371fc846e"
+  },
+  {
+    "path": "docs/热水器使用指南_我的经历.md",
+    "bytes": 3358,
+    "sha256": "aaea645223a7af6107598aeb8afdecd301f8a9a65d2a757f71683c3eab9cee8a"
+  },
+  {
+    "path": "docs/覆盖缺口与待确认事项.md",
+    "bytes": 2483,
+    "sha256": "2b2ad493fec247735992a74256fa69d2be2f63bf31093cd8070c09ddfdc59646"
+  },
+  {
+    "path": "docs/评估报告.md",
+    "bytes": 2762,
+    "sha256": "8c895cdc9e6b67365062f227964109653312416e6001a560320671650f4ee125"
+  },
+  {
+    "path": "docs/资料范围与来源.md",
+    "bytes": 4668,
+    "sha256": "49f0f49872acb3b85e1ce16a708bbbeb0f8c77c82724ddd6f681ab6f152fb588"
+  },
+  {
+    "path": "dormcare_adapter.py",
+    "bytes": 1713,
+    "sha256": "a3b11f3a998568f8c73d28dae6ed1092aa57e9620c145ea9f9cef9752f4ba101"
+  },
+  {
+    "path": "evaluate.py",
+    "bytes": 10586,
+    "sha256": "08cf4c0c46370ddb8158076e0289c7479f2209a6590ac179459ca3dc14156038"
+  },
+  {
+    "path": "evaluation/behavior_results.json",
+    "bytes": 3204,
+    "sha256": "6ad1b7c10c0808d656ab783df09f983ce90c24518840089d0109375831ce3684"
+  },
+  {
+    "path": "evaluation/benchmark.json",
+    "bytes": 11065,
+    "sha256": "d54c6976360badf7dff13036db396d855b056ac0f9a07aae563802723222c7aa"
+  },
+  {
+    "path": "evaluation/control_results.json",
+    "bytes": 1108,
+    "sha256": "0658e7e9108a6513832c0d48ac851fb6889aeebfdf0ca81e2a0facfdfd834caa"
+  },
+  {
+    "path": "evaluation/default_search_results.json",
+    "bytes": 5113,
+    "sha256": "4c92abdf47667d060e0d39515da9911f1f98aea3a44acf90fc5a4ebd2a5c4cce"
+  },
+  {
+    "path": "evaluation/retrieval_results.jsonl",
+    "bytes": 37323,
+    "sha256": "e2d2020e9ec125f752640a712e61e84055dd123ce8cfc0f2cc4ff0260abfd1a3"
+  },
+  {
+    "path": "evaluation/summary.json",
+    "bytes": 899,
+    "sha256": "4b491f07e4da79d4349f69aadd885fcd90c93a1b72c71be0ada9e6b696f448ad"
+  },
+  {
+    "path": "evaluation/热水器接入检查.json",
+    "bytes": 304,
+    "sha256": "d09d6984f553227a1f755bb3152489b98858292b072147721b2e97bfd447ce24"
+  },
+  {
+    "path": "import/admin_knowledge.md",
+    "bytes": 6991,
+    "sha256": "9bb2de92a07d2b25495e069dde63d70e25c1a60787ae94ea4c1a68bd3e6078ee"
+  },
+  {
+    "path": "import/student_knowledge.md",
+    "bytes": 29909,
+    "sha256": "f3efedf53e65ebb08760b48908d97b4ffc6908135e4bf29d9a236850098086f9"
+  },
+  {
+    "path": "import/worker_knowledge.md",
+    "bytes": 30707,
+    "sha256": "30c028a2d328d9f1175712ec90e7c73309fe4d815c2c51c7782d813a7012c866"
+  },
+  {
+    "path": "requirements-extraction-macos.txt",
+    "bytes": 87,
+    "sha256": "3e2f7862a1f408bf1effe9574c93ee6fce4b458d9c09f88eb743bd1aa0f05296"
+  },
+  {
+    "path": "requirements.txt",
+    "bytes": 30,
+    "sha256": "048ad209ffd5ca84d35ee96d4ddb82750b3294d5969fd089e1bca503d05c0332"
+  },
+  {
+    "path": "retriever.py",
+    "bytes": 11768,
+    "sha256": "2eb2762a57a413649963ac5a756c78f09fc57292dce17585924aac7d9342b1ba"
+  },
+  {
+    "path": "tools_extract_pdf.py",
+    "bytes": 2704,
+    "sha256": "1b2d73d349aa1e624d1cd24a84fcabc92c9865cf91c12ecf9ddc772b4540e177"
+  },
+  {
+    "path": "先读我.md",
+    "bytes": 2385,
+    "sha256": "8dbd31c0e8202e92ab91f5d1142c08bc158908c49b313922a600825cd72ada15"
+  },
+  {
+    "path": "热水器使用指南.html",
+    "bytes": 2824,
+    "sha256": "0a49e7495e82495a7cf8f23adbef76780bac0dd987e3cc2e8c4acf64dc192353"
+  }
+]

@@ -265,6 +265,17 @@
     if (!noScroll) $("draftSection").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function kbNote(data) {
+    var advising = data.stage === "advice" || data.stage === "no_solution" ||
+      data.state === "advice" || data.state === "no_solution";
+    if (!advising) return "";
+    if (data.kb_status === "empty") return t("kbEmpty");
+    if (data.kb_status === "hit") return t("kbHit");
+    if (data.kb_status === "no_procedure" || data.kb_status === "insufficient_evidence" ||
+        data.kb_status === "no_hit") return t("kbNone");
+    return "";
+  }
+
   function renderAgentResult(data) {
     lastAgentResult = data;
     var detected = data.detected || {};
@@ -281,7 +292,7 @@
       esc(priLabel(detected.priority || "normal")) + "</span>" +
       "<span>" + esc(t("confidenceLabel")) + "：" +
       esc(data.confidence || "—") + "</span>" +
-      (data.kb_status === "empty" ? "<span>" + esc(t("kbEmpty")) + "</span>" : "");
+      (kbNote(data) ? "<span>" + esc(kbNote(data)) + "</span>" : "");
     var missing = data.missing || [];
     $("agentMissing").hidden = !missing.length;
     $("agentMissing").innerHTML = missing.length

@@ -317,13 +317,12 @@ SEED_DEMO_TICKETS = [
 
 
 def _seed_demo_tickets_enabled():
-    """Test stores (`data/test-*.json`) stay empty so suites can count tickets.
+    """Empty stores get the demo board unless this is explicitly turned off.
 
-    Set `DORMCARE_SEED_TICKETS=0` to boot a production file with no demo board.
+    Test suites set `DORMCARE_SEED_TICKETS=0` so they can count tickets from
+    zero. A fresh public deploy leaves the variable unset and must seed.
     """
-    if os.environ.get("DORMCARE_SEED_TICKETS", "1").strip() == "0":
-        return False
-    return not os.path.basename(DATA_FILE).startswith("test-")
+    return os.environ.get("DORMCARE_SEED_TICKETS", "1").strip() != "0"
 
 
 def _seed_demo_tickets():
@@ -3218,9 +3217,11 @@ def main():
     except ValueError:
         port = 3000
     sys.stderr.write(
-        "DormCare -> http://0.0.0.0:%d  (model=%s, key=%s, tickets=%d, workers=%d)\n"
+        "DormCare -> http://0.0.0.0:%d  (model=%s, key=%s, tickets=%d, workers=%d, data=%s, seed=%s)\n"
         % (port, Handler.model, "set" if Handler.api_key else "MISSING",
-           len(STORE.tickets()), len(STORE.workers()))
+           len(STORE.tickets()), len(STORE.workers()),
+           os.path.basename(DATA_FILE),
+           "on" if _seed_demo_tickets_enabled() else "off")
     )
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
 

@@ -58,6 +58,9 @@ def spawn_server(here, port, key=None, env_extra=None, log_name=None, data=None)
     log_path = os.path.join(here, log_name or ("server.%d.log" % port))
     env = dict(os.environ)
     env["PORT"] = str(port)
+    # Suites assert exact ticket counts. Production leaves this unset and
+    # seeds a demo board whenever the store has no tickets.
+    env.setdefault("DORMCARE_SEED_TICKETS", "0")
     if key is None:
         pass
     elif key:

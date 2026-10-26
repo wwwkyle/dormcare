@@ -294,10 +294,6 @@
     $("routeRepair").textContent = t("routeRepair");
     $("agentAdvice").hidden =
       data.stage !== "advice" && data.stage !== "no_solution";
-    var adviceHeading = $("agentAdvice").querySelector("h3");
-    if (adviceHeading) adviceHeading.hidden = true;
-    $("selfHelpList").hidden = true;
-    $("selfHelpList").innerHTML = "";
     if (data.stage === "follow_up" || data.stage === "advice") setStage("assist");
     if (data.stage === "resolved") {
       setStage("confirm");

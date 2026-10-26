@@ -490,9 +490,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .agent-result p { margin: 10px 0 0; }
 .agent-result ul { margin: 7px 0 0; padding-left: 20px; }
 .agent-advice { background: #f5faf6; border-color: #cce4d4; }
-.agent-advice h3 { margin: 0 0 7px; font-size: 14px; color: #276e48; }
-.agent-advice ol { margin: 0; padding-left: 20px; }
-.agent-advice .row { margin-top: 11px; }
+.agent-advice .row { margin-top: 0; }
+[hidden] { display: none !important; }
 .route-actions, .question-options {
   display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
 }

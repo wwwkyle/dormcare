@@ -266,12 +266,6 @@ _KEYWORDS = [
     ("furniture",   ["五金", "导轨", "柜锁", "螺丝", "hardware", "hinge", "screw"]),
 ]
 
-_URGENT_WORDS = ["漏水", "爆管", "断电", "没电", "冒烟", "起火", "火花", "危险", "触电",
-                 "flood", "leak everywhere", "sparking", "smoke", "fire", "danger", "shock"]
-_HIGH_WORDS = ["堵塞", "不制冷", "没热水", "broken", "blocked", "not cooling", "no hot water",
-               "漏电", "跳闸"]
-
-
 def fallback_classify(text, lang="zh"):
     """Keyword-only classification. Always returns a valid catalogue entry."""
     low = " " + (text or "").lower() + " "
@@ -280,14 +274,11 @@ def fallback_classify(text, lang="zh"):
             if w in low:
                 return {
                     "repair_type": rid,
-                    "priority": ("urgent" if any(x in low for x in _URGENT_WORDS)
-                                 else "high" if any(x in low for x in _HIGH_WORDS)
-                                 else "normal"),
+                    "priority": "normal",
                     "confidence": "low",
                     "source": "rules",
                 }
-    return {"repair_type": "other",
-            "priority": "urgent" if any(x in low for x in _URGENT_WORDS) else "normal",
+    return {"repair_type": "other", "priority": "normal",
             "confidence": "low", "source": "rules"}
 
 

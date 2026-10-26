@@ -26,6 +26,23 @@ def intake_prompt(lang):
     language = "Simplified Chinese" if lang == "zh" else "English"
     return INTAKE_AGENT_PROMPT.format(language=language)
 
+
+ADVICE_PROMPT = """You are DormCare's repair advisor.
+Write a practical repair suggestion for the student's latest message.
+The required language is {language}. Do not mix Chinese and English.
+Use the knowledge notes when they describe this fault, and put the actual steps in the reply.
+The student only sees the reply. Do not mention a category, priority, confidence, or a knowledge-base label.
+Output JSON only: {{"reply":"..."}}
+Knowledge notes:
+{notes}
+"""
+
+
+def advice_prompt(lang, notes):
+    """Ask the model for the only text the student should read."""
+    language = "Simplified Chinese" if lang == "zh" else "English"
+    return ADVICE_PROMPT.format(language=language, notes=notes or "(none)")
+
 CREATE_TICKET_TOOL = {
     "type": "function",
     "function": {

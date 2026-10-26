@@ -265,34 +265,15 @@
     if (!noScroll) $("draftSection").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function kbNote(data) {
-    var advising = data.stage === "advice" || data.stage === "no_solution" ||
-      data.state === "advice" || data.state === "no_solution";
-    if (!advising) return "";
-    if (data.kb_status === "empty") return t("kbEmpty");
-    if (data.kb_status === "hit") return t("kbHit");
-    if (data.kb_status === "no_procedure" || data.kb_status === "insufficient_evidence" ||
-        data.kb_status === "no_hit") return t("kbNone");
-    return "";
-  }
-
   function renderAgentResult(data) {
     lastAgentResult = data;
-    var detected = data.detected || {};
     $("agentResult").hidden = false;
-    $("agentResult").className = "agent-result" +
-      (data.safety_warning ? " high-risk" : "");
+    $("agentResult").className = "agent-result";
     $("agentReply").textContent = data.reply || "";
-    $("safetyAlert").hidden = !data.safety_warning;
-    $("safetyAlert").textContent = data.safety_warning || "";
-    $("agentMeta").innerHTML =
-      "<span>" + esc(t("aiClass")) + "：" +
-      esc(repairName(detected.repair_type || "")) + "</span>" +
-      "<span>" + esc(t("aiPriority")) + "：" +
-      esc(priLabel(detected.priority || "normal")) + "</span>" +
-      "<span>" + esc(t("confidenceLabel")) + "：" +
-      esc(data.confidence || "—") + "</span>" +
-      (kbNote(data) ? "<span>" + esc(kbNote(data)) + "</span>" : "");
+    $("safetyAlert").hidden = true;
+    $("safetyAlert").textContent = "";
+    $("agentMeta").hidden = true;
+    $("agentMeta").textContent = "";
     var missing = data.missing || [];
     $("agentMissing").hidden = !missing.length;
     $("agentMissing").innerHTML = missing.length
@@ -311,12 +292,12 @@
     $("routeSelfHelp").hidden =
       !routes.some(function (x) { return x.id === "self_help" && x.enabled; });
     $("routeRepair").textContent = t("routeRepair");
-    var tips = data.self_help || [];
     $("agentAdvice").hidden =
       data.stage !== "advice" && data.stage !== "no_solution";
-    $("selfHelpList").innerHTML = tips.map(function (x) {
-      return "<li>" + esc(x) + "</li>";
-    }).join("");
+    var adviceHeading = $("agentAdvice").querySelector("h3");
+    if (adviceHeading) adviceHeading.hidden = true;
+    $("selfHelpList").hidden = true;
+    $("selfHelpList").innerHTML = "";
     if (data.stage === "follow_up" || data.stage === "advice") setStage("assist");
     if (data.stage === "resolved") {
       setStage("confirm");
@@ -354,8 +335,7 @@
       conversation.push({
         role: "assistant",
         lang: res.data.lang || DC.lang,
-        text: (res.data.safety_warning ? "⚠ " + res.data.safety_warning + "\n" : "") +
-          res.data.reply
+        text: res.data.reply || ""
       });
       renderConversation();
       renderAgentResult(res.data);
@@ -654,12 +634,12 @@
       $("draftSection").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     $("intakeClearBtn").addEventListener("click", function () {
+      var previous = agentSessionId;
       $("intakeText").value = "";
       $("intakeText").disabled = false;
       $("agentSend").disabled = false;
       $("fTitle").value = "";
       $("fDesc").value = "";
-      $("agentLog").hidden = true;
       $("agentResult").hidden = true;
       $("agentAdvice").hidden = true;
       $("routeActions").hidden = true;
@@ -676,9 +656,15 @@
       agentSessionId = "";
       try { localStorage.removeItem(SESSION_KEY); } catch (ignore) {}
       setStage("describe");
+      renderConversation();
       renderPhotos();
       DC.setMsg($("agentMsg"), "", "");
       DC.setMsg($("formMsg"), "", "");
+      if (previous) {
+        DC.post("/api/agent/message", {
+          id: previous, action: "reset", lang: DC.lang
+        }).catch(function () {});
+      }
     });
 
     $("submitBtn").addEventListener("click", submitTicket);

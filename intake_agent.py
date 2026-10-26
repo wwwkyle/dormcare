@@ -5,7 +5,7 @@ import os
 import re
 import time
 
-from agent_prompts import intake_prompt
+from agent_prompts import advice_prompt, intake_prompt
 from agent_tools import (build_draft, confidence_for, next_question_for,
                          validate_draft)
 from ai_agents import SELF_HELP, call_model
@@ -203,9 +203,18 @@ def _advice_turn(draft, lang, text="", emergency=False, user=None, history=None)
                      if lang == "zh" else
                      "Use only these knowledge-base checks. Do not open equipment or touch live or gas parts. Stop and create a ticket if anything feels unsafe.")
         else:
-            reply = ("以下来自宿舍知识库（资料整理者收集，尚未现场审核，不是确诊）。只做不拆机的步骤；不确定就停止并生成工单。"
-                     if lang == "zh" else
-                     "These checks come from the dorm knowledge base. They are not a field-approved diagnosis. Do not open equipment; stop and create a ticket if unsure.")
+            ac_leak = bool(re.search(r"空调|冷气|air-?con", low)) and bool(
+                re.search(r"漏水|滴水|凝露|leak|drip", low))
+            if ac_leak:
+                reply = ("先关闭空调，站在地面操作，不要攀高，也不要拆排水管或室内机。下面是知识库里对应的说明，不是现场确诊。水还在滴就生成工单。"
+                         if lang == "zh" else
+                         "Switch the air conditioner off. Stay on the floor; do not climb or open the drain or the indoor unit. The notes below are from the knowledge base, not a site diagnosis. Create a ticket if it is still dripping.")
+            else:
+                reply = ("以下来自宿舍知识库（资料整理者收集，尚未现场审核，不是确诊）。只做不拆机的步骤；不确定就停止并生成工单。"
+                         if lang == "zh" else
+                         "These checks come from the dorm knowledge base. They are not a field-approved diagnosis. Do not open equipment; stop and create a ticket if unsure.")
+        reply = reply + "\n" + "\n".join(
+            "%d. %s" % (index, tip) for index, tip in enumerate(tips, 1))
         return {
             "reply": reply, "stage": "advice", "state": "advice",
             "complete": False, "draft": draft,
@@ -282,21 +291,86 @@ def _model_messages(history, store, upload_dir):
     return messages
 
 
+def _model_reply_text(raw):
+    text = (raw or "").strip()
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return text
+    if isinstance(data, dict):
+        reply = str(data.get("reply") or "").strip()
+        return reply or text
+    return text
+
+
+def _knowledge_notes(history, text, draft, user, lang):
+    """Notes for the model. They are not shown to the student."""
+    query = _retrieval_query(history, text) or (draft.get("description") or "")
+    if not query:
+        return ""
+    found = advice_for_student(
+        query, user or {"role": "student"},
+        category=draft.get("repair_type"), lang=lang)
+    return "\n".join(step.get("text") or "" for step in (found.get("steps") or []) if step.get("text"))
+
+
+def _advice_from_model(api_key, model, session, user, lang, store, upload_dir, draft):
+    """The student-facing repair suggestion is the model's reply."""
+    history = session.get("history") or []
+    latest = ""
+    for item in reversed(history):
+        if item.get("role") == "user":
+            latest = str(item.get("content") or "")
+            break
+    notes = _knowledge_notes(history, latest, draft, user, lang)
+    unavailable = ("请管理员先保存模型密钥，再获取维修建议。"
+                   if lang == "zh" else
+                   "Save a model key before asking for repair advice.")
+    failed = ("模型这次没有给出维修建议，请再发一次。"
+              if lang == "zh" else
+              "The model did not return repair advice. Send the question again.")
+    reply = ""
+    source = "rules"
+    if api_key:
+        messages = [{"role": "system", "content": advice_prompt(lang, notes)}]
+        messages.extend(_model_messages(history, store, upload_dir))
+        for attempt in range(2):
+            try:
+                reply = _model_reply_text(call_model(
+                    api_key, model, messages, max_tokens=800,
+                    temperature=0.2, json_mode=True))
+                if not reply or not _lang_ok(reply, lang):
+                    raise ValueError("empty or wrong language")
+                source = "model"
+                break
+            except Exception:
+                reply = ""
+                if attempt == 0:
+                    time.sleep(0.15)
+        if not reply:
+            reply = failed
+            source = "fallback_after_model_error"
+    else:
+        reply = unavailable
+    return {
+        "reply": reply, "stage": "advice", "state": "advice",
+        "complete": False, "draft": None,
+        "detected": {"repair_type": draft.get("repair_type"), "priority": "normal"},
+        "missing": [], "self_help": [], "safety_warning": "",
+        "source": source, "solution": None,
+        "route_options": [{"id": "smart_repair", "enabled": True, "recommended": False}],
+        "active_route": "self_help",
+    }
+
+
 def respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
             force_draft=False, advice_mode=False):
     history = session.get("history") or []
     image_ids = session.get("image_ids") or []
     local_draft, enough, warning = build_draft(history, image_ids, user, lang)
     if advice_mode or (session.get("active_route") == "self_help" and not force_draft):
-        latest = ""
-        for item in reversed(history):
-            if item.get("role") == "user":
-                latest = str(item.get("content") or "")
-                break
-        advice = _advice_turn(
-            local_draft, lang, latest,
-            bool(warning or local_draft.get("priority") == "urgent"),
-            user=user, history=history)
+        advice = _advice_from_model(
+            api_key, model, session, user, lang, store, upload_dir, local_draft)
         return _enrich(advice, session, local_draft, lang)
     if force_draft:
         return _enrich(

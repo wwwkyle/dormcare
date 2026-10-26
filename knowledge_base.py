@@ -169,7 +169,7 @@ class KnowledgeBase:
         average = sum(sum(doc.values()) for doc in docs) / max(count, 1)
         document_freq = collections.Counter(token for doc in docs for token in doc)
         scores = []
-        for doc in docs:
+        for index, doc in enumerate(docs):
             length = sum(doc.values())
             score = 0.0
             for token in query_tokens:
@@ -180,6 +180,13 @@ class KnowledgeBase:
                                    (document_freq[token] + .5)) *
                           freq * 2.2 /
                           (freq + 1.2 * (.25 + .75 * length / max(average, 1))))
+            # A token that is one of the chunk's own keywords is the symptom
+            # the note was written for. Body text often repeats the device
+            # name ("空调") and would otherwise outrank the leak note.
+            keywords = " ".join(self.records[idx[index]].get("keywords") or []).lower()
+            for token in query_tokens:
+                if len(token) >= 2 and token in keywords:
+                    score += 1.5
             scores.append(score)
         order = sorted(range(len(idx)),
                        key=lambda j: (-float(scores[j]), self.records[idx[j]]["chunk_id"]))[:k]
@@ -316,14 +323,27 @@ _CATEGORY_HINTS = (
 
 
 def category_for_query(query, hinted=None):
-    """Follow the latest fault the student named, otherwise keep the draft category."""
+    """Follow the device the student named, not a shared symptom word.
+
+    "空调漏水" matches both the air-conditioner notes and the plumbing notes,
+    because 漏水 is also a plumbing hint. The device wins; a previous draft
+    category must not keep an air-conditioner leak in the plumbing set.
+    """
     named = []
     low = (query or "").lower()
     for category, words in _CATEGORY_HINTS:
         if any(word.lower() in low for word in words):
             named.append(category)
-    if len(set(named)) == 1:
-        return named[0]
+    unique = list(dict.fromkeys(named))
+    if "ac" in unique and "ac_service" in unique:
+        if "清洗" in low or "保养" in low:
+            return "ac_service"
+        return "ac"
+    devices = [category for category in unique if category != "plumbing"]
+    if len(devices) == 1 and "plumbing" in unique:
+        return devices[0]
+    if len(unique) == 1:
+        return unique[0]
     return hinted
 
 

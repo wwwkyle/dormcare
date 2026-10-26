@@ -102,9 +102,10 @@ def main():
             "id": aid, "lang": "zh", "text": "插座坏了"})
         ok("ordinary routing exposes stable v2 fields",
            s == 200 and first["contract_version"] == 2 and
-           [x["id"] for x in first["route_options"]] ==
-           ["self_help", "smart_repair"] and
-           first["state"] == "route_choice" and first["response_mode"] == "complete")
+           first["state"] in ("advice", "no_solution") and
+           any(x["id"] == "smart_repair" and x["enabled"]
+               for x in first["route_options"]) and
+           first["response_mode"] == "complete" and first["source"] != "model")
         ok("Chinese first turn is strictly Chinese",
            first["lang"] == "zh" and has_zh(first["reply"]))
         ok("first turn never asks a follow-up",
@@ -115,10 +116,11 @@ def main():
         s, english_first = stu.call("/api/agent/message", {
             "id": english_id, "lang": "en",
             "text": "The dorm chair keeps sinking and cannot be used safely."})
-        ok("English first turn has exactly two English routes",
+        ok("English first turn answers in English from the knowledge path",
            s == 200 and english_first["lang"] == "en" and
-           [x["id"] for x in english_first["route_options"]] ==
-           ["self_help", "smart_repair"] and
+           english_first["state"] in ("advice", "no_solution") and
+           any(x["id"] == "smart_repair" and x["enabled"]
+               for x in english_first["route_options"]) and
            not has_zh(english_first["reply"]))
         s, bad_option = stu.call("/api/agent/message", {
             "id": aid, "option": "invented"})
@@ -168,32 +170,24 @@ def main():
         s, advice = stu.call("/api/agent/message", {
             "id": advice_id,
             "text": "宿舍网络突然断线，路由器状态正常，重新插过网线仍无法使用"})
-        ok("safe issue first returns exactly two routes",
-           s == 200 and advice["state"] == "route_choice" and
-           len(advice["route_options"]) == 2 and advice["next_question"] is None)
-        s, advice = stu.call("/api/agent/message", {
-            "id": advice_id, "action": "self_help"})
-        ok("advice starts only after A is selected",
-           s == 200 and advice["stage"] == "advice" and advice["self_help"])
-        ok("network advice is grounded in the knowledge base",
-           advice["kb_status"] == "hit" and
-           advice["solution"]["source"] == "knowledge" and
-           advice["self_help"] and
-           "R-NET" in "".join(advice["solution"].get("chunk_ids") or []) and
-           "来源" in advice["self_help"][0])
+        ok("a fault description asks the model for repair advice",
+           s == 200 and advice["state"] == "advice" and not advice["self_help"] and
+           not advice["safety_warning"] and advice["next_question"] is None and
+           "立即停止" not in advice["reply"] and "依据知识库" not in advice["reply"])
+        ok("advice does not show the canned safety script",
+           "报修类别" not in advice["reply"] and "置信度" not in advice["reply"])
         s, live_session = stu.call("/api/agent/session", {"lang": "zh"})
         live_id = live_session["session"]["id"]
         s, asked = stu.call("/api/agent/message", {
             "id": live_id, "text": "空调不制冷，滤网看起来有灰，我该怎么修"})
-        ok("asking how to repair searches the knowledge base immediately",
-           s == 200 and asked["stage"] == "advice" and asked["kb_status"] == "hit" and
-           asked["solution"]["source"] == "knowledge")
+        ok("asking how to repair returns model advice without the canned script",
+           s == 200 and asked["stage"] == "advice" and not asked["self_help"] and
+           not asked["safety_warning"] and "立即停止" not in asked["reply"])
         s, asked_again = stu.call("/api/agent/message", {
             "id": live_id, "text": "遥控器也没反应，还有什么可以先检查"})
-        ok("each repair question searches again",
+        ok("a follow-up still returns repair advice",
            s == 200 and asked_again["stage"] == "advice" and
-           asked_again["kb_status"] == "hit" and
-           asked_again["solution"]["chunk_ids"] != asked["solution"]["chunk_ids"])
+           asked_again["reply"] and "立即停止" not in asked_again["reply"])
         s, ticket_instead = stu.call("/api/agent/message", {
             "id": live_id, "text": "请生成工单"})
         ok("asking for a ticket does not return repair-guide steps",
@@ -224,9 +218,9 @@ def main():
             "id": no_hit_id, "text": "衣柜柜门合页松了，柜门下垂，我没有再去拉"})
         s, no_hit = stu.call("/api/agent/message", {
             "id": no_hit_id, "action": "self_help"})
-        ok("KB without a repair procedure routes back to ticket creation",
-           s == 200 and no_hit["stage"] == "no_solution" and
-           no_hit["kb_status"] == "no_procedure" and no_hit["solution"] is None and
+        ok("advice keeps the recognised category for a later ticket",
+           s == 200 and no_hit["stage"] == "advice" and
+           not no_hit["self_help"] and not no_hit["safety_warning"] and
            no_hit["draft"]["repair_type"] == "wardrobe")
         s, zh_switch_session = stu.call("/api/agent/session", {"lang": "zh"})
         zh_switch_id = zh_switch_session["session"]["id"]
@@ -320,21 +314,19 @@ def main():
         emergency_id = emergency_session["session"]["id"]
         s, emergency = stu.call("/api/agent/message", {
             "id": emergency_id, "text": "插座正在冒火花并有焦味"})
-        ok("emergency first turn keeps both routes and no question",
-           s == 200 and emergency["emergency"] and
-           [x["id"] for x in emergency["route_options"]] ==
-           ["self_help", "smart_repair"] and emergency["next_question"] is None and
-           emergency["route_options"][1]["recommended"])
+        ok("a dangerous report still returns model advice and a ticket route",
+           s == 200 and emergency["stage"] == "advice" and
+           not emergency["safety_warning"] and not emergency["self_help"] and
+           "立即停止" not in emergency["reply"] and
+           any(x["id"] == "smart_repair" and x["enabled"]
+               for x in emergency["route_options"]) and
+           emergency["next_question"] is None)
         s, safe_advice = stu.call("/api/agent/message", {
             "id": emergency_id, "action": "self_help"})
-        ok("emergency A returns conservative safety advice",
+        ok("advice follow-up does not repeat the canned safety script",
            s == 200 and safe_advice["stage"] == "advice" and
-           safe_advice["solution"]["source"] == "safety_fallback" and
-           "拆卸" in safe_advice["self_help"][0])
-        dangerous_text = " ".join(safe_advice["self_help"])
-        ok("dangerous advice contains safety actions only",
-           "远离" in dangerous_text and "联系" in dangerous_text and
-           "打开外壳" not in dangerous_text and "拆开维修" not in dangerous_text)
+           not safe_advice["self_help"] and "立即停止" not in safe_advice["reply"] and
+           "打开外壳" not in safe_advice["reply"])
 
         s, human_session = stu.call("/api/agent/session", {"lang": "en"})
         human_id = human_session["session"]["id"]
@@ -358,7 +350,37 @@ def main():
         s, fallback = stu.call("/api/agent/message", {
             "id": fallback_id, "text": "宿舍门锁卡住，钥匙可以转动但门打不开，今晚开始"})
         ok("no-model deployment uses deterministic fallback",
-           s == 200 and fallback["source"] == "rules")
+           s == 200 and fallback["source"] in ("rules", "knowledge") and
+           fallback["source"] != "model")
+        s, reset_session = stu.call("/api/agent/session", {"lang": "zh"})
+        reset_id = reset_session["session"]["id"]
+        stu.call("/api/agent/message", {"id": reset_id, "text": "空调漏水了"})
+        s, reset = stu.call("/api/agent/message", {"id": reset_id, "action": "reset"})
+        s_gone, gone = stu.call("/api/agent/session?id=" + reset_id)
+        ok("clearing the intake deletes that conversation",
+           s == 200 and reset.get("reset") is True and s_gone == 404)
+        import intake_agent
+        captured = {}
+
+        def fake_call(api_key, model, messages, max_tokens=800, temperature=0, json_mode=False):
+            captured["key"] = api_key
+            captured["system"] = messages[0]["content"]
+            return '{"reply":"先关闭空调，用容器接住滴水，并检查滤网是否堵塞。"}'
+
+        intake_agent.call_model = fake_call
+        modeled = intake_agent.respond(
+            "sk-test-secret-value-not-real", "deepseek-flash",
+            {"history": [{"role": "user", "content": "空调漏水了"}], "image_ids": []},
+            {"role": "student", "id": "u", "college": "shaw", "block": "A", "dorm": "301"},
+            "zh", advice_mode=True)
+        ok("a saved key returns the model repair advice",
+           modeled["source"] == "model" and "滤网" in modeled["reply"] and
+           not modeled["self_help"] and not modeled["safety_warning"] and
+           "立即停止" not in modeled["reply"] and "依据知识库" not in modeled["reply"] and
+           "sk-test-secret-value-not-real" not in modeled["reply"] and
+           captured["key"] == "sk-test-secret-value-not-real" and
+           "导风板" in captured["system"] and
+           "sk-test-secret-value-not-real" not in captured["system"])
         print("ALL MULTIMODAL TESTS PASSED")
         return 0
     finally:

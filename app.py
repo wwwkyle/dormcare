@@ -1987,10 +1987,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         action = body.get("action") or ""
         allowed_actions = ("", "resolved", "create_draft", "self_help",
-                           "smart_repair", "manual", "save_draft")
+                           "smart_repair", "manual", "save_draft", "reset")
         if action not in allowed_actions:
             self._err(400, "bad_agent_action",
                       agent_error("bad_agent_action", lang), lang)
+            return
+        if action == "reset":
+            STORE.delete_agent_session(session["id"])
+            self._json(200, {"ok": True, "reset": True, "lang": lang})
             return
         if action == "manual":
             session = STORE.update_agent_session(session["id"], {
@@ -2098,29 +2102,12 @@ class Handler(BaseHTTPRequestHandler):
         wants_advice = (not wants_ticket) and (
             action == "self_help"
             or session.get("active_route") == "self_help"
-            or intake_agent.student_wants_advice(text))
+            or intake_agent.student_wants_advice(text)
+            or first_turn)
         result = intake_agent.respond(self.api_key, self.model, session, user,
                                       lang, STORE, UPLOAD_DIR,
                                       force_draft=wants_ticket,
                                       advice_mode=wants_advice)
-        if first_turn and not wants_ticket and not wants_advice:
-            spoken = (result.get("reply") or "").strip()
-            if result.get("source") != "model" or not spoken:
-                spoken = ("已完成初步识别。请选择“提供维修建议”或“生成工单”。"
-                          if lang == "zh" else
-                          "Initial recognition is complete. Choose repair advice or create a ticket.")
-            result.update({
-                "reply": spoken,
-                "stage": "route_choice", "state": "route_choice",
-                "complete": False, "missing": [], "next_question": None,
-                "question_options": [], "self_help": [], "solution": None,
-                "route_options": [
-                    {"id": "self_help", "enabled": True, "recommended": False},
-                    {"id": "smart_repair", "enabled": True,
-                     "recommended": bool(result.get("emergency"))},
-                ],
-                "active_route": "",
-            })
         if session.get("draft") and result.get("draft") and (
                 force_draft or result.get("stage") in ("advice", "no_solution")):
             merged = dict(result["draft"])

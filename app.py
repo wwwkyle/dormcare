@@ -269,8 +269,112 @@ SEED_USERS = [
 ]
 
 
+# Demo board for a fresh deployment. `scripts/serve.py` used to file these
+# over HTTP after a local start; a published site never runs that script, so
+# an empty store showed "0 tickets". Each row belongs to the student who
+# actually lives in that room. Statuses are mixed so the overview, the ticket
+# board and a technician's queue all have something to show.
+#
+# (username, repair_type, priority, slots, description, contact,
+#  status, assigned_worker, rating, feedback)
+SEED_DEMO_TICKETS = [
+    ("2024001", "ac", "urgent", [[2, 8]],
+     "空调漏水而且不制冷，晚上噪音很大", "138-0000-1234",
+     "accepted", "W-B02", 0, ""),
+    ("2024003", "chair", "high", [[4, 10]],
+     "椅子气压杆坏了，坐下去会往下滑", "139-0000-5678",
+     "pending", "", 0, ""),
+    ("2024010", "light", "normal", [[6, 16]],
+     "书桌上方的灯管不亮了，换了灯管也没用", "137-0000-9012",
+     "pending", "", 0, ""),
+    ("2024004", "plumbing", "urgent", [[1, 6]],
+     "洗手台下水道堵塞，水漫出来了", "136-0000-3456",
+     "accepted", "W-C03", 0, ""),
+    ("2024005", "bed", "normal", [[3, 12]],
+     "上铺床板有条裂缝，翻身会响", "135-0000-7890",
+     "done", "W-A01", 0, ""),
+    ("2024009", "desk", "low", [[5, 14]],
+     "书桌抽屉滑轨卡住了，拉不开", "134-0000-2345",
+     "pending", "", 0, ""),
+    ("2024006", "network", "high", [[7, 15]],
+     "网口不通，电脑显示网线未连接", "133-0000-6789",
+     "pending", "", 0, ""),
+    ("2024002", "wardrobe", "normal", [[2, 9]],
+     "衣柜门合页松了，门掉下来了", "132-0000-1122",
+     "confirmed", "W-A01", 5, "门装回去了，开关正常"),
+    ("2024007", "door", "high", [[0, 5]],
+     "房间门锁坏了一直锁不上，人不在时房间不安全", "131-0000-4455",
+     "accepted", "W-C03", 0, ""),
+    ("2024008", "floor", "low", [[9, 16]],
+     "地板有一块翘起来了，走路会绊到", "130-0000-7788",
+     "pending", "", 0, ""),
+    # Deliberately too short a window for a 40-minute electrical job, so the
+    # technician console still has an "unscheduled" case to show.
+    ("2024006", "power", "high", [[4, 4]],
+     "插座一插大功率电器就跳闸，只有半小时有空", "133-0000-6789",
+     "pending", "", 0, ""),
+]
+
+
+def _seed_demo_tickets_enabled():
+    """Test stores (`data/test-*.json`) stay empty so suites can count tickets.
+
+    Set `DORMCARE_SEED_TICKETS=0` to boot a production file with no demo board.
+    """
+    if os.environ.get("DORMCARE_SEED_TICKETS", "1").strip() == "0":
+        return False
+    return not os.path.basename(DATA_FILE).startswith("test-")
+
+
+def _seed_demo_tickets():
+    """Write the demo board once, dated today, using each account's own room."""
+    day = date.today().isoformat()
+    now = datetime.now().isoformat(timespec="seconds")
+    users = {u["username"]: u for u in STORE.users()}
+    for (username, repair_type, priority, slots, desc, contact,
+         status, worker, rating, feedback) in SEED_DEMO_TICKETS:
+        user = users.get(username)
+        if not user or not user.get("college") or not user.get("dorm"):
+            continue
+        ticket = {
+            "user_id": user["id"],
+            "user_username": username,
+            "college": user.get("college", ""),
+            "block": user.get("block", ""),
+            "dorm": user.get("dorm", ""),
+            "public": False,
+            "repair_type": repair_type,
+            "priority": priority,
+            "date": day,
+            "slots": [list(pair) for pair in slots],
+            "description": desc,
+            "student_name": user.get("name", ""),
+            "contact": contact or user.get("phone", ""),
+            "lang": "zh",
+            "ai_reason": "",
+            "ai_source": "",
+            "title": "",
+            "image_ids": [],
+            "completion_image_ids": [],
+            "agent_session_id": "",
+            "status": status,
+            "assigned_worker": worker,
+        }
+        if status in ("accepted", "done", "confirmed"):
+            ticket["accepted_at"] = now
+        if status in ("done", "confirmed"):
+            ticket["done_at"] = now
+            ticket["completed_at"] = now
+            ticket["completed_by"] = worker
+        if status == "confirmed":
+            ticket["confirmed_at"] = now
+            ticket["rating"] = rating
+            ticket["feedback"] = feedback
+        STORE.add_ticket(ticket)
+
+
 def ensure_seed():
-    """Idempotent: fill in the technicians and the demo accounts once."""
+    """Idempotent: fill in the technicians, the demo accounts, and a demo board."""
     if not STORE.workers():
         for w in SEED_WORKERS:
             STORE.add_worker(dict(w))
@@ -288,6 +392,8 @@ def ensure_seed():
             "id": "U-" + spec["username"],
             "password": hash_password(password),
         })
+    if _seed_demo_tickets_enabled() and not STORE.tickets():
+        _seed_demo_tickets()
     STORE.purge_expired_sessions()
 
 

@@ -78,6 +78,8 @@ def main():
             ("/api/workers", None, "GET"),
             ("/api/plan?date=2026-10-07", None, "GET"),
             ("/api/setup", {"key": "sk-" + "x" * 30}, "POST"),
+            ("/api/setup/reset", {}, "POST"),
+            ("/api/admin/model", None, "GET"),
             ("/api/tickets", {"college": "shaw", "dorm": "A-1",
                               "date": "2026-10-07", "slots": [[1, 2]]}, "POST"),
             ("/api/schedule/optimize", {"date": "2026-10-07"}, "POST"),

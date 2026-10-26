@@ -38,6 +38,7 @@
       { icon: "📋", href: "/tickets.html",  key: "menuAdminTickets",  sub: "menuAdminTicketsSub" },
       { icon: "👥", href: "/users.html",    key: "menuAdminUsers",    sub: "menuAdminUsersSub" },
       { icon: "🛠️", href: "/roster.html",  key: "menuAdminRoster",   sub: "menuAdminRosterSub" },
+      { icon: "🔐", href: "/model.html",   key: "menuAdminModel",    sub: "menuAdminModelSub" },
       { icon: "🔑", href: "/account.html",  key: "menuAdminAccount",  sub: "menuAdminAccountSub" }
     ]
   };

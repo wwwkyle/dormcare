@@ -74,8 +74,9 @@ import ai_agents
 import auth
 import intake_agent
 from ai_agents import (AIError, DEFAULT_MODEL, MSG_NOT_IN_KB, MSG_OUT_OF_SCOPE,
-                       PROVIDERS, advise_dispatch, advise_student, parse_intake,
-                       set_api_base, summarize_plan, valid_custom_base, verify_key)
+                       PROVIDERS, advise_dispatch, advise_student, clear_api_base,
+                       parse_intake, set_api_base, summarize_plan,
+                       valid_custom_base, verify_key)
 from auth import (ANY_ROLE, HOME_BY_ROLE, MAX_DORM, MAX_NAME, MAX_PHONE,
                   MAX_TRADE, MAX_USERNAME, MENU_PATH, ROLE_ADMIN, ROLE_STUDENT,
                   ROLE_WORKER, SESSION_COOKIE, SESSION_DAYS, clean_name,
@@ -181,6 +182,8 @@ STATIC_FILES = {
     "/admin-users.js": ("js/admin-users.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
     "/roster.html": ("pages/roster.html", "text/html; charset=utf-8", ROLE_ADMIN),
     "/admin-roster.js": ("js/admin-roster.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
+    "/model.html": ("pages/model.html", "text/html; charset=utf-8", ROLE_ADMIN),
+    "/admin-model.js": ("js/admin-model.js", "application/javascript; charset=utf-8", ROLE_ADMIN),
 }
 
 #: The three consolidated consoles that used to hold every section of a role on
@@ -1038,6 +1041,23 @@ def admin_overview(lang="zh"):
 
 
 
+def model_status():
+    """What an administrator may see about the model key. Never the key itself."""
+    source = Handler.key_source or ""
+    provider = Handler.provider or ""
+    base = ""
+    if provider == "custom":
+        base = ai_agents.configured_base()
+    return {
+        "configured": bool(Handler.api_key),
+        "source": source,
+        "locked": source == "env",
+        "provider": provider,
+        "model": Handler.model or "",
+        "base_url": base,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # HTTP handler
 # --------------------------------------------------------------------------- #
@@ -1292,6 +1312,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, admin_overview(lang))
             return
 
+        if path == "/api/admin/model":
+            user = self._require(ROLE_ADMIN)
+            if not user:
+                return
+            self._json(200, model_status())
+            return
+
         if path == "/api/admin/tickets":
             user = self._require(ROLE_ADMIN)
             if not user:
@@ -1468,6 +1495,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/auth/logout": self._api_logout,
             "/api/auth/register": self._api_register,
             "/api/setup": self._api_setup,
+            "/api/setup/reset": self._api_setup_reset,
             # ---- self-service: nobody has to wait for the administrator ---- #
             "/api/account/room": self._api_account_room,
             "/api/account/phone": self._api_account_phone,
@@ -1748,24 +1776,38 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_setup(self, body, ip):
         # Only an administrator may place a model key into this process.
+        # A first save enrolls the key. A later save with `replace` changes
+        # the provider, model, endpoint, or the key itself. An environment
+        # key cannot be overwritten from the page.
         if not self._require(ROLE_ADMIN):
             return
         if self.key_source == "env":
             self._err(409, "setup_disabled_env",
                       "This server was started with a key in its environment.")
             return
+        replacing = bool(body.get("replace"))
+        if Handler.api_key and not replacing:
+            self._err(409, "setup_already_enrolled", "A key is already enrolled.")
+            return
         provider = body.get("provider") or "openrouter"
         if provider not in PROVIDERS:
             self._err(400, "setup_bad_provider", "Unknown model provider.")
             return
-        candidate = body.get("key")
-        if not isinstance(candidate, str):
+        raw_key = body.get("key")
+        if raw_key is None:
+            raw_key = ""
+        if not isinstance(raw_key, str):
             self._err(400, "setup_missing_key", "Missing key.")
             return
-        candidate = candidate.strip()
-        if (len(candidate) < 16 or len(candidate) > 400 or
-                any(ch.isspace() for ch in candidate)):
-            self._err(400, "setup_not_a_key", "That does not look like an API key.")
+        candidate = raw_key.strip()
+        keep_existing = (replacing and Handler.key_source == "enrolled"
+                         and Handler.api_key and not candidate)
+        if keep_existing:
+            candidate = Handler.api_key
+        elif (not candidate or len(candidate) < 16 or len(candidate) > 400
+              or any(ch.isspace() for ch in candidate)):
+            code = "setup_missing_key" if not candidate else "setup_not_a_key"
+            self._err(400, code, "That does not look like an API key.")
             return
         spec = PROVIDERS[provider]
         if provider == "custom":
@@ -1787,9 +1829,6 @@ class Handler(BaseHTTPRequestHandler):
         if not model:
             self._err(400, "setup_bad_model", "A model name is required for this provider.")
             return
-        if Handler.api_key:
-            self._err(409, "setup_already_enrolled", "A key is already enrolled.")
-            return
         previous = (Handler.api_key, Handler.key_source, Handler.model,
                     Handler.provider, ai_agents.API_BASE, ai_agents.API_BASE_SET)
         Handler.api_key = candidate
@@ -1803,14 +1842,34 @@ class Handler(BaseHTTPRequestHandler):
              Handler.provider, ai_agents.API_BASE, ai_agents.API_BASE_SET) = previous
             self._err(400, "setup_rejected", "The provider rejected this key (401/403).")
             return
+        code = "setup_updated" if replacing else "setup_ok"
         if verdict == "unavailable":
             self._json(200, {"ok": True, "verified": False, "code": "setup_unverified",
                              "provider": provider, "model": model,
-                             "message": "Key enrolled but not verified."})
+                             "message": "Key enrolled but not verified.",
+                             "status": model_status()})
             return
-        self._json(200, {"ok": True, "verified": True, "code": "setup_ok",
+        self._json(200, {"ok": True, "verified": True, "code": code,
                          "provider": provider, "model": model,
-                         "message": "Key enrolled and verified."})
+                         "message": "Key enrolled and verified.",
+                         "status": model_status()})
+
+    def _api_setup_reset(self, body, ip):
+        """Drop a page-enrolled key. An environment key stays where it is."""
+        if not self._require(ROLE_ADMIN):
+            return
+        if self.key_source == "env":
+            self._err(409, "setup_disabled_env",
+                      "This server was started with a key in its environment.")
+            return
+        Handler.api_key = ""
+        Handler.key_source = ""
+        Handler.provider = ""
+        Handler.model = (os.environ.get("OPENAI_MODEL")
+                         or os.environ.get("OPENROUTER_MODEL")
+                         or DEFAULT_MODEL).strip()
+        clear_api_base()
+        self._json(200, {"ok": True, "code": "setup_reset", "status": model_status()})
 
     # ---- student: AI intake ---------------------------------------------- #
 

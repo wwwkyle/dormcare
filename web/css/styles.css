@@ -229,7 +229,9 @@ body {
 }
 .tk-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+.btn.danger,
 .btn.tiny.danger { color: var(--err); border-color: #f1d2d0; background: #fdf4f3; }
+.btn.danger:hover:not(:disabled),
 .btn.tiny.danger:hover:not(:disabled) { background: #fbe9e7; border-color: #e6bdb9; color: var(--err); }
 .pill.ok { color: #fff; background: var(--ok); border-color: var(--ok); }
 
@@ -284,7 +286,7 @@ details.ticket.fold-item.done .tk-type { color: var(--ink-2); }
 .lbl:first-of-type { margin-top: 0; }
 .lbl-note { display: block; font-weight: 400; font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
 
-input[type="text"], input[type="password"], input[type="tel"], select, textarea {
+input[type="text"], input[type="password"], input[type="tel"], input[type="url"], select, textarea {
   width: 100%; font: inherit; font-size: 13.5px; color: var(--ink);
   background: #fff; border: 1px solid var(--line-2); border-radius: var(--radius-sm);
   padding: 9px 12px; outline: 0;

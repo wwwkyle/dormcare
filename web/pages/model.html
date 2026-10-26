@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="modelPageTitle">模型密钥 · DormCare</title>
+<meta name="description" content="DormCare 管理员端 · 填写、修改和重置模型密钥。Model key settings of DormCare.">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app narrow">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark admin" aria-hidden="true">🧭</div>
+      <div class="brand-text">
+        <h1 data-i18n="modelPageTitle">模型密钥 · DormCare</h1>
+        <p data-i18n="adminSub">DormCare 运维管理台</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="lang" id="lang" role="group" aria-label="Language / 语言">
+        <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <div class="status" id="status" data-state="checking">
+        <span class="dot"></span><span id="statusText" data-i18n="statusChecking">连接中…</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="rolebar" data-rolebar>
+    <span class="here" data-i18n="roleAdmin">管理员</span>
+    <span class="rolebar-note" id="adminIdentity"></span>
+    <div class="userchip" id="userChip" hidden></div>
+  </nav>
+
+  <main class="stack">
+
+    <section class="card">
+      <div class="card-head">
+        <h2><span aria-hidden="true">🔐</span> <span data-i18n="modelCardTitle">模型密钥</span></h2>
+      </div>
+      <p class="hint" data-i18n="setupBody"></p>
+      <p class="locked-value" id="modelNow"></p>
+
+      <form id="modelForm" autocomplete="off">
+        <label class="lbl" for="setupProvider" data-i18n="setupProvider">模型服务</label>
+        <select id="setupProvider" data-i18n-aria="setupProvider">
+          <option value="openrouter" data-i18n="providerOpenrouter">OpenRouter</option>
+          <option value="openai">OpenAI</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="moonshot" data-i18n="providerMoonshot">月之暗面</option>
+          <option value="zhipu" data-i18n="providerZhipu">智谱</option>
+          <option value="siliconflow" data-i18n="providerSilicon">硅基流动</option>
+          <option value="dashscope" data-i18n="providerDashscope">通义千问</option>
+          <option value="custom" data-i18n="providerCustom">自定义兼容接口</option>
+        </select>
+
+        <label class="lbl" for="setupModel" data-i18n="modelName">模型名</label>
+        <input type="text" id="setupModel" maxlength="120" autocomplete="off" spellcheck="false"
+               data-i18n-ph="setupModelPh">
+
+        <div id="setupBaseWrap" hidden>
+          <label class="lbl" for="setupBase" data-i18n="modelBase">接口地址</label>
+          <input type="url" id="setupBase" maxlength="300" autocomplete="off" spellcheck="false"
+                 data-i18n-ph="setupBasePh">
+        </div>
+
+        <label class="lbl" for="setupKey" id="setupKeyLabel" data-i18n="modelKeyLabel">API 密钥</label>
+        <input type="password" id="setupKey" maxlength="400" autocomplete="off" spellcheck="false"
+               data-i18n-ph="setupPlaceholder">
+
+        <div class="row">
+          <button type="submit" class="btn primary" id="setupBtn" data-i18n="modelSave">保存</button>
+          <button type="button" class="btn danger" id="modelReset" data-i18n="modelReset">重置密钥</button>
+        </div>
+      </form>
+      <p class="form-msg" id="setupMsg"></p>
+    </section>
+
+  </main>
+
+</div>
+<script src="/common.js"></script>
+<script src="/admin-model.js"></script>
+</body>
+</html>

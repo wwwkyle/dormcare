@@ -58,6 +58,13 @@ def set_api_base(url):
     API_BASE_SET = True
 
 
+def clear_api_base():
+    """Drop a page-enrolled root so the process falls back to the environment."""
+    global API_BASE, API_BASE_SET
+    API_BASE = ""
+    API_BASE_SET = False
+
+
 def configured_base():
     if API_BASE_SET:
         return API_BASE

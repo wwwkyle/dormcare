@@ -440,6 +440,8 @@ async function runRole(page, module, cookie, opts) {
     "admin-tickets.js": ["adUserList", "adWorkerList", "adminStats"],
     "admin-users.js": ["adTicketList", "adWorkerList", "adminStats"],
     "admin-roster.js": ["adTicketList", "adUserList", "adminStats"],
+    "admin-model.js": ["adTicketList", "adUserList", "adWorkerList",
+                       "adminStats", "accPwSave"],
   }[module] || [];
   for (const other of FOREIGN) {
     check(page + " does not carry another section's control #" + other,
@@ -1041,17 +1043,18 @@ async function runMenu(role, cookie) {
     student: ["/report.html", "/records.html", "/account.html"],
     worker: ["/plan.html", "/jobs.html", "/account.html"],
     admin: ["/overview.html", "/tickets.html", "/users.html", "/roster.html",
-            "/account.html"],
+            "/model.html", "/account.html"],
   };
   const ALL = ["/report.html", "/records.html", "/plan.html", "/jobs.html",
-               "/overview.html", "/tickets.html", "/users.html", "/roster.html"];
+               "/overview.html", "/tickets.html", "/users.html", "/roster.html",
+               "/model.html"];
   // The i18n key behind each card, for the language-switch checks below. Kept
   // separate from EXPECT because EXPECT is about PAGES and this is about WORDS.
   const TITLES = {
     student: ["menuStudentReport", "menuStudentRecords", "menuStudentAccount"],
     worker: ["menuWorkerPlan", "menuWorkerPool", "menuWorkerAccount"],
     admin: ["menuAdminOverview", "menuAdminTickets", "menuAdminUsers",
-            "menuAdminRoster", "menuAdminAccount"],
+            "menuAdminRoster", "menuAdminModel", "menuAdminAccount"],
   };
   const zh = DC.I18N.zh;
   const want = EXPECT[role];
@@ -1167,6 +1170,7 @@ async function runMenu(role, cookie) {
     "/tickets.html": "admin", "/admin-tickets.js": "admin",
     "/users.html": "admin", "/admin-users.js": "admin",
     "/roster.html": "admin", "/admin-roster.js": "admin",
+    "/model.html": "admin", "/admin-model.js": "admin",
   };
   for (const [path, owner] of Object.entries(OWNER)) {
     for (const [role, session] of Object.entries(sessions)) {
@@ -1225,6 +1229,7 @@ async function runMenu(role, cookie) {
   await runRole("/tickets.html", "admin-tickets.js", admin.cookie);
   await runRole("/users.html", "admin-users.js", admin.cookie);
   await runRole("/roster.html", "admin-roster.js", admin.cookie);
+  await runRole("/model.html", "admin-model.js", admin.cookie);
 
   const failed = results.filter((r) => !r.ok);
   console.log("\n" + "=".repeat(60));

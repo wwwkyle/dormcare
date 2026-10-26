@@ -112,6 +112,8 @@ def main():
             ("/api/admin/ticket/update", {"id": "T00000000"}, "POST"),
             ("/api/admin/ticket/delete", {"id": "T00000000"}, "POST"),
             ("/api/admin/audit?limit=5", None, "GET"),
+            ("/api/admin/model", None, "GET"),
+            ("/api/setup/reset", {}, "POST"),
         ]:
             s, d = anon.call(path, body, method)
             check("anonymous %-28s -> 401" % path, s == 401, "%d %s" % (s, d.get("code")))
@@ -143,6 +145,8 @@ def main():
             ("technician cannot edit an admin ticket", tech, "/api/admin/ticket/update",
              {"id": "T00000000", "title": "x"}, "POST"),
             ("student cannot read admin audit", stu, "/api/admin/audit", None, "GET"),
+            ("student cannot read the model key", stu, "/api/admin/model", None, "GET"),
+            ("technician cannot reset the model key", tech, "/api/setup/reset", {}, "POST"),
         ]:
             s, d = client.call(path, body, method)
             check("%s -> 403" % label, s == 403 and d.get("code") == "forbidden",
@@ -171,11 +175,12 @@ def main():
         #    A console reached the wrong way bounces to the main menu, so     #
         #    the shared menu is never a way around a per-page gate.          #
         # ---------------------------------------------------------------- #
-        # The administrator has FOUR pages now, one per menu card, and each is
-        # gated exactly as a single-role page always was.
+        # One page per menu card. Each is gated exactly as a single-role page
+        # always was.
         admin_pages = ["/overview.html", "/tickets.html", "/users.html", "/roster.html",
+                       "/model.html",
                        "/admin-overview.js", "/admin-tickets.js", "/admin-users.js",
-                       "/admin-roster.js"]
+                       "/admin-roster.js", "/admin-model.js"]
         gates = [("anonymous %s" % p, anon, p, 303, "/login.html") for p in admin_pages]
         gates += [("student %s" % p, stu, p, 303, "/menu.html") for p in admin_pages]
         gates += [("technician %s" % p, tech, p, 303, "/menu.html") for p in admin_pages]
@@ -206,6 +211,32 @@ def main():
             good = (got == want and (want_loc is None or loc == want_loc))
             check("page gate %-28s -> %d %s" % (label, got, loc), good,
                   "wanted %d %s" % (want, want_loc))
+
+        # ---------------------------------------------------------------- #
+        # 3b. the model-key page: read the status, never the key itself       #
+        # ---------------------------------------------------------------- #
+        s, st = admin.call("/api/admin/model", None, "GET")
+        dumped = json.dumps(st, ensure_ascii=False)
+        check("administrator reads model status",
+              s == 200 and "configured" in st and "key" not in st, st)
+        check("model status never echoes a key",
+              "api_key" not in dumped and "sk-" not in dumped, dumped)
+        if st.get("locked"):
+            s, d = admin.call("/api/setup/reset", {})
+            check("an environment key cannot be reset from the page",
+                  s == 409 and d.get("code") == "setup_disabled_env", d)
+            s, d = admin.call("/api/setup", {"key": "sk-" + "x" * 20, "replace": True})
+            check("an environment key cannot be replaced from the page",
+                  s == 409 and d.get("code") == "setup_disabled_env", d)
+        else:
+            s, d = admin.call("/api/setup", {"provider": "openrouter", "key": "short"})
+            check("a short key is refused before it is stored",
+                  s == 400 and d.get("code") == "setup_not_a_key", d)
+            s, d = admin.call("/api/setup/reset", {})
+            check("reset is safe when nothing is enrolled",
+                  s == 200 and d.get("code") == "setup_reset"
+                  and d.get("status", {}).get("configured") is False
+                  and "key" not in d.get("status", {}), d)
 
         # ---------------------------------------------------------------- #
         # 4. the whole board is readable                                     #

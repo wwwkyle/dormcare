@@ -271,6 +271,8 @@ PAGE_OWNER = {
     "/admin-users.js": "admin",
     "/roster.html": "admin",
     "/admin-roster.js": "admin",
+    "/model.html": "admin",
+    "/admin-model.js": "admin",
 }
 
 #: The consolidated consoles the split removed. They must be GONE, not quietly

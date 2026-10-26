@@ -55,33 +55,6 @@
 
   </main>
 
-  <section class="setup-wrap">
-    <div class="setup" id="setup" hidden>
-      <h3><span aria-hidden="true">🔑</span> <span data-i18n="setupTitle">启用模型密钥</span></h3>
-      <p data-i18n-html="setupBody"></p>
-      <form id="setupForm" autocomplete="off">
-        <select id="setupProvider" data-i18n-aria="setupProvider">
-          <option value="openrouter" data-i18n="providerOpenrouter">OpenRouter</option>
-          <option value="openai">OpenAI</option>
-          <option value="deepseek">DeepSeek</option>
-          <option value="moonshot" data-i18n="providerMoonshot">月之暗面</option>
-          <option value="zhipu" data-i18n="providerZhipu">智谱</option>
-          <option value="siliconflow" data-i18n="providerSilicon">硅基流动</option>
-          <option value="dashscope" data-i18n="providerDashscope">通义千问</option>
-          <option value="custom" data-i18n="providerCustom">自定义兼容接口</option>
-        </select>
-        <input type="text" id="setupModel" autocomplete="off" spellcheck="false"
-               data-i18n-ph="setupModelPh" data-i18n-aria="setupModelPh">
-        <input type="password" id="setupKey" autocomplete="off" spellcheck="false"
-               data-i18n-ph="setupPlaceholder" data-i18n-aria="setupTitle">
-        <button type="submit" class="btn primary" id="setupBtn" data-i18n="setupSubmit">启用</button>
-        <input type="url" id="setupBase" hidden autocomplete="off" spellcheck="false"
-               data-i18n-ph="setupBasePh" data-i18n-aria="setupBasePh">
-      </form>
-      <p class="form-msg" id="setupMsg"></p>
-    </div>
-  </section>
-
 </div>
 <script src="/common.js"></script>
 <script src="/admin-overview.js"></script>

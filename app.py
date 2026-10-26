@@ -1533,7 +1533,7 @@ class Handler(BaseHTTPRequestHandler):
         except AIError as exc:
             self._handle_ai_error(exc)
         except Exception as exc:
-            sys.stderr.write("[error] %s: %s\n" % (type(exc).__name__, exc))
+            sys.stderr.write("[error] %s\n" % (type(exc).__name__,))
             self._err(500, "server", "Something went wrong on the server.")
 
     def _same_origin(self):
@@ -1769,7 +1769,7 @@ class Handler(BaseHTTPRequestHandler):
         elif exc.status == 429:
             self._err(503, "busy", "The model is busy right now. Please try again shortly.")
         else:
-            sys.stderr.write("[upstream] status=%s msg=%s\n" % (exc.status, exc.message))
+            sys.stderr.write("[upstream] status=%s\n" % (exc.status,))
             self._err(502, "upstream", "The model could not be reached.")
 
     # ---- key enrollment --------------------------------------------------- #
@@ -2104,10 +2104,13 @@ class Handler(BaseHTTPRequestHandler):
                                       force_draft=wants_ticket,
                                       advice_mode=wants_advice)
         if first_turn and not wants_ticket and not wants_advice:
-            result.update({
-                "reply": ("已完成初步识别。请选择“提供维修建议”或“生成工单”。"
+            spoken = (result.get("reply") or "").strip()
+            if result.get("source") != "model" or not spoken:
+                spoken = ("已完成初步识别。请选择“提供维修建议”或“生成工单”。"
                           if lang == "zh" else
-                          "Initial recognition is complete. Choose repair advice or create a ticket."),
+                          "Initial recognition is complete. Choose repair advice or create a ticket.")
+            result.update({
+                "reply": spoken,
                 "stage": "route_choice", "state": "route_choice",
                 "complete": False, "missing": [], "next_question": None,
                 "question_options": [], "self_help": [], "solution": None,

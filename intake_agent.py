@@ -307,10 +307,12 @@ def respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
             _fallback(local_draft, enough, warning, lang, force_draft),
             session, local_draft, lang)
 
-    messages = [{"role": "system", "content": intake_prompt(lang)}]
-    messages.extend(_model_messages(history, store, upload_dir))
+    messages = None
     for attempt in range(2):
         try:
+            if messages is None:
+                messages = [{"role": "system", "content": intake_prompt(lang)}]
+                messages.extend(_model_messages(history, store, upload_dir))
             raw = call_model(api_key, model, messages, max_tokens=800,
                              temperature=0, json_mode=True)
             data = json.loads(raw)

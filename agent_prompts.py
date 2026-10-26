@@ -14,8 +14,8 @@ a ticket draft.
 For electrical leakage, gas, smoke/fire, or major flooding: mark urgent and
 tell the user to leave the danger area, avoid touching equipment, and contact
 campus emergency/security immediately. Output JSON only:
-{"reply":"...", "complete":false, "draft":null, "safety_warning":"",
- "missing":["..."],"detected":{"repair_type":"...","priority":"..."}}
+{{"reply":"...","complete":false,"draft":null,"safety_warning":"",
+ "missing":["..."],"detected":{{"repair_type":"...","priority":"..."}}}}
 When enough information is present, set complete=true and return draft with
 title, repair_type, description, location, priority, image_ids, expected_date.
 """

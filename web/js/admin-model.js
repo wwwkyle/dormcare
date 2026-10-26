@@ -23,6 +23,18 @@
     custom: "providerCustom"
   };
 
+  // Shown only while the box is empty. Leaving it blank saves this name.
+  var MODEL_EXAMPLE = {
+    openrouter: "deepseek/deepseek-chat",
+    openai: "gpt-4o-mini",
+    deepseek: "deepseek-flash",
+    moonshot: "moonshot-v1-8k",
+    zhipu: "glm-4-flash",
+    siliconflow: "deepseek-ai/DeepSeek-V3",
+    dashscope: "qwen-plus",
+    custom: "your-model"
+  };
+
   function $(id) { return document.getElementById(id); }
 
   function providerLabel(id) {
@@ -39,10 +51,20 @@
     node.textContent = me ? fill(t("adminIdentityBar"), { id: me.username || "" }) : "";
   }
 
+  function modelPlaceholder() {
+    var provider = $("setupProvider");
+    var id = provider ? provider.value : "openrouter";
+    return fill(t("modelExample"), {
+      example: MODEL_EXAMPLE[id] || MODEL_EXAMPLE.custom
+    });
+  }
+
   function syncProvider() {
     var provider = $("setupProvider");
     var wrap = $("setupBaseWrap");
     var base = $("setupBase");
+    var model = $("setupModel");
+    if (model) model.placeholder = modelPlaceholder();
     if (!provider || !wrap || !base) return;
     var custom = provider.value === "custom";
     wrap.hidden = !custom;
@@ -68,6 +90,8 @@
       key.required = !s.configured;
       key.placeholder = s.configured ? t("modelKeyKeep") : t("setupPlaceholder");
     }
+    var model = $("setupModel");
+    if (model) model.placeholder = modelPlaceholder();
     if (!now) return;
     if (locked) {
       now.textContent = fill(t("modelStatusEnv"), {
@@ -91,8 +115,8 @@
     if (provider && status.provider && PROVIDER_KEY[status.provider]) {
       provider.value = status.provider;
     }
-    if (model && status.model && document.activeElement !== model) {
-      model.value = status.model;
+    if (model && document.activeElement !== model) {
+      model.value = status.configured ? (status.model || "") : "";
     }
     if (base && status.base_url && document.activeElement !== base) {
       base.value = status.base_url;

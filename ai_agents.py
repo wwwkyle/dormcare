@@ -42,7 +42,7 @@ API_BASE_SET = False
 PROVIDERS = {
     "openrouter": {"base": "", "model": DEFAULT_MODEL},
     "openai": {"base": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
-    "deepseek": {"base": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
+    "deepseek": {"base": "https://api.deepseek.com/v1", "model": "deepseek-flash"},
     "moonshot": {"base": "https://api.moonshot.cn/v1", "model": "moonshot-v1-8k"},
     "zhipu": {"base": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4-flash"},
     "siliconflow": {"base": "https://api.siliconflow.cn/v1", "model": "deepseek-ai/DeepSeek-V3"},
@@ -191,6 +191,11 @@ def call_model(api_key, model, messages, *, max_tokens=MAX_TOKENS,
         payload["response_format"] = {"type": "json_object"}
     base = configured_base()
     url = (base + "/chat/completions") if base else OPENROUTER_URL
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    # Thinking is on by default and can spend the whole token budget before
+    # any answer is written. Turn it off so the reply arrives in `content`.
+    if host.endswith("deepseek.com"):
+        payload["thinking"] = {"type": "disabled"}
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),

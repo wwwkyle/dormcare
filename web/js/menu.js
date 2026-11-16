@@ -87,6 +87,9 @@
   }
 
   function render() {
+    var roleKey = {student: "Student", worker: "Worker", admin: "Admin"}[DC.me && DC.me.role];
+    if ($("workspaceHeading")) $("workspaceHeading").textContent = roleKey ? t("workspace" + roleKey) : "";
+    if ($("workspaceDescription")) $("workspaceDescription").textContent = roleKey ? t("workspace" + roleKey + "Sub") : "";
     renderMark(DC.me && DC.me.role);
     renderGreeting();
     renderCards();

@@ -974,9 +974,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--brand); box-shad
 .menu-go { position: absolute; top: 32px; right: 26px; font-size: 22px; }
 .menu-card:first-child { border-color: #91baa3; background: #f5faf6; }
 .menu-card:hover { border-color: var(--brand); transform: translateY(-3px); box-shadow: 0 12px 24px -18px #17543c70; }
-.intake-steps { counter-reset: intake; gap: 8px; }
-.intake-steps li { border-radius: 8px; padding: 12px 8px; }
-.intake-steps li::before { counter-increment: intake; content: counter(intake) ". "; font-weight: 700; }
+.intake-steps { gap: 8px; }
+.intake-steps li { border-radius: 8px; padding: 12px 8px 12px 34px; }
+.intake-steps li::before { top: 11px; font-weight: 700; }
 .intake-steps li.active { color: var(--brand); border-color: #a4c8b5; background: #eaf5ed; }
 #intakeText { min-height: 135px; margin-top: 12px; background: #f8fbf9; }
 .agent-result { margin: 18px 0; }
@@ -1051,6 +1051,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--brand); box-shad
   .stop { grid-template-columns: 62px 1fr; gap: 9px; }
   .slot-side { flex-direction: row; flex-wrap: wrap; }
   .slot-wrap { flex-direction: column; }
+  .slot-grid { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .rolebar { flex-direction: column; align-items: flex-start; gap: 8px; }
   .tk-row { grid-template-columns: 1fr; gap: 1px; }
   .tk-badges { margin-left: 0; }

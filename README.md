@@ -15,6 +15,19 @@ python app.py --api-key sk-or-v1-xxxxxxxx        # 或直接传入密钥
 export OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx      # OpenRouter；也可用 OPENAI_API_KEY + OPENAI_BASE_URL
 ```
 
+学生 AI 受理也可接入已发布的 Dify 聊天工作流，保留现有报修表单和确认 / 排班逻辑：
+
+在项目根目录的 `.env:1` 填入该应用的 API Key（首次克隆可从 `.env.example:1` 复制）：
+
+```dotenv
+DIFY_API_KEY=app-替换为应用API密钥
+DIFY_API_BASE_URL=https://api.dify.ai/v1
+```
+
+然后运行 `python3 app.py`。启动时自动读取项目根目录的 `.env:1`，已有系统环境变量优先；该文件已被 Git 忽略，不会提交到 GitHub。
+
+聊天分享链接不是 API 地址，需从对应应用控制台获取密钥。自定义工作流变量、双向接口密钥和验证步骤见 `docs/dify-integration.md:1`。
+
 **先登录。** 只有一个入口，所有人从登录页进去；进去之后是**哪个界面，由账号的角色决定，
 不是由地址决定**：
 

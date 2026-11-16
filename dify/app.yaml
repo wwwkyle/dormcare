@@ -1,0 +1,688 @@
+app:
+  description: DormCare 宿舍报修智能分流与 JSON 接口工作流
+  icon: 🛠️
+  icon_background: '#E8F3FF'
+  icon_type: emoji
+  mode: workflow
+  name: DormCare 宿舍智能报修分流
+  use_icon_as_answer_icon: false
+kind: app
+site:
+  chat_color_theme: ''
+  chat_color_theme_inverted: false
+  copyright: ''
+  custom_disclaimer: ''
+  default_language: zh-Hans
+  description: DormCare 报修接口工作流
+  icon: 🛠️
+  icon_background: '#E8F3FF'
+  icon_type: emoji
+  input_placeholder: ''
+  privacy_policy: ''
+  show_workflow_steps: true
+  title: DormCare 宿舍智能报修分流
+  use_icon_as_answer_icon: false
+version: 0.7.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions: []
+      allowed_file_types: []
+      allowed_file_upload_methods: []
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 50
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        knowledge_file_size_limit: 50
+        single_chunk_attachment_limit: 10
+        skill_file_size_limit: 50
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: llm
+      id: start-source-emergency-classifier-target
+      source: start
+      sourceHandle: source
+      target: emergency_classifier
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: if-else
+      id: emergency-classifier-source-emergency-gate-target
+      source: emergency_classifier
+      sourceHandle: source
+      target: emergency_gate
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: answer
+      id: emergency-gate-true-emergency-answer-target
+      source: emergency_gate
+      sourceHandle: 'true'
+      target: emergency_answer
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: if-else
+      id: emergency-gate-false-route-gate-target
+      source: emergency_gate
+      sourceHandle: 'false'
+      target: route_gate
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: http-request
+      id: route-gate-false-advice-request-target
+      source: route_gate
+      sourceHandle: 'false'
+      target: advice_request
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: llm
+      id: route-gate-true-report-info-target
+      source: route_gate
+      sourceHandle: 'true'
+      target: report_info
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: llm
+      id: advice-request-source-advice-llm-target
+      source: advice_request
+      sourceHandle: source
+      target: advice_llm
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: if-else
+      id: advice-llm-source-resolved-gate-target
+      source: advice_llm
+      sourceHandle: source
+      target: resolved_gate
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: answer
+      id: resolved-gate-true-resolved-answer-target
+      source: resolved_gate
+      sourceHandle: 'true'
+      target: resolved_answer
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: llm
+      id: resolved-gate-false-report-info-target
+      source: resolved_gate
+      sourceHandle: 'false'
+      target: report_info
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: http-request
+      id: report-info-source-report-request-target
+      source: report_info
+      sourceHandle: source
+      target: report_request
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: answer
+      id: report-request-source-report-answer-target
+      source: report_request
+      sourceHandle: source
+      target: report_answer
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户描述故障
+        type: start
+        variables:
+        - default: ''
+          label: 用户描述故障
+          max_length: 2000
+          options: []
+          required: true
+          type: paragraph
+          variable: complaint
+        - default: auto
+          label: 处理方式
+          max_length: 20
+          options:
+          - auto
+          - self_help
+          - direct_report
+          required: true
+          type: select
+          variable: route
+        - default: zh
+          label: 语言
+          max_length: 10
+          options:
+          - zh
+          - en
+          required: true
+          type: select
+          variable: lang
+        - default: unknown
+          label: 自助排查后是否解决
+          max_length: 20
+          options:
+          - unknown
+          - 'yes'
+          - 'no'
+          required: false
+          type: select
+          variable: resolved_after_check
+        - default: ''
+          label: 紧急维修电话或联系人
+          max_length: 100
+          options: []
+          required: false
+          type: text-input
+          variable: emergency_phone
+        - default: ''
+          label: 可上门日期
+          max_length: 20
+          options: []
+          required: false
+          type: text-input
+          variable: date
+        - default: '[]'
+          label: 可上门时间窗 JSON
+          max_length: 500
+          options: []
+          required: false
+          type: text-input
+          variable: slots_json
+        - default: '{}'
+          label: 位置 JSON
+          max_length: 1000
+          options: []
+          required: false
+          type: paragraph
+          variable: location_json
+        - default: http://localhost:3000
+          label: DormCare 服务地址
+          max_length: 300
+          options: []
+          required: true
+          type: text-input
+          variable: dormcare_base_url
+        - default: ''
+          label: DormCare API Key
+          max_length: 300
+          options: []
+          required: true
+          type: text-input
+          variable: dormcare_api_key
+      height: 73
+      id: start
+      position:
+        x: 80
+        y: 500
+      positionAbsolute:
+        x: 80
+        y: 500
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0
+          mode: chat
+          name: gpt-4o-mini
+          provider: langgenius/openai/openai
+        prompt_template:
+        - id: emergency-system
+          role: system
+          text: |-
+            你是宿舍报修安全分流器。只判断是否紧急，不诊断故障。
+            出现漏电、触电、火花、冒烟、起火、燃气味、煤气、插座进水、
+            大面积漏水、人员被困或无法逃生时，urgent=true；否则 urgent=false。
+            只输出 JSON，不要输出 Markdown：{"urgent":true,"reason":"简短原因"}
+        - id: emergency-user
+          role: user
+          text: '{{#start.complaint#}}'
+        selected: false
+        title: 大模型识别是否为紧急情况
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: emergency_classifier
+      position:
+        x: 380
+        y: 500
+      positionAbsolute:
+        x: 380
+        y: 500
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: contains
+            id: emergency-condition
+            value: '"urgent":true'
+            variable_selector:
+            - emergency_classifier
+            - text
+          logical_operator: and
+        desc: 紧急情况跳过自助排查，直接返回维修电话并结束。
+        selected: false
+        title: 是否紧急？
+        type: if-else
+      height: 126
+      id: emergency_gate
+      position:
+        x: 700
+        y: 500
+      positionAbsolute:
+        x: 700
+        y: 500
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+      zIndex: 0
+    - data:
+        answer: |-
+          ⚠️ 识别为紧急情况，请立即停止使用并远离故障点。
+          请联系校园保卫、宿管或物业紧急人员：{{#start.emergency_phone#}}
+          不要拆卸、带电维修或自行复位燃气设备。
+        selected: false
+        title: 返回维修电话，结束
+        type: answer
+        variables: []
+      height: 126
+      id: emergency_answer
+      position:
+        x: 1040
+        y: 120
+      positionAbsolute:
+        x: 1040
+        y: 120
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: '='
+            id: route-condition
+            value: direct_report
+            variable_selector:
+            - start
+            - route
+          logical_operator: and
+        desc: 普通情况选择自助排查或直接报修。
+        selected: false
+        title: 自助排查还是直接报修？
+        type: if-else
+      height: 126
+      id: route_gate
+      position:
+        x: 1040
+        y: 650
+      positionAbsolute:
+        x: 1040
+        y: 650
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+      zIndex: 0
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: |-
+            {
+              "complaint": "{{#start.complaint#}}",
+              "route": "self_help",
+              "lang": "{{#start.lang#}}",
+              "date": "{{#start.date#}}",
+              "slots": {{#start.slots_json#}},
+              "location": {{#start.location_json#}}
+            }
+          type: json
+        desc: 调用 DormCare 知识库和安全规则，生成路线一建议。
+        headers: |-
+          Content-Type: application/json
+          X-DormCare-Key: {{#start.dormcare_api_key#}}
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 2
+          retry_enabled: true
+          retry_interval: 200
+        selected: false
+        timeout:
+          max_connect_timeout: 30
+          max_read_timeout: 60
+          max_write_timeout: 30
+        title: 路线一：提供排查建议
+        type: http-request
+        url: '{{#start.dormcare_base_url#}}/api/dify/workflow'
+        variables: []
+      height: 166
+      id: advice_request
+      position:
+        x: 1370
+        y: 430
+      positionAbsolute:
+        x: 1370
+        y: 430
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+      zIndex: 0
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: gpt-4o-mini
+          provider: langgenius/openai/openai
+        prompt_template:
+        - id: advice-system
+          role: system
+          text: |-
+            你是宿舍维修自助排查助手。根据 DormCare 返回的 JSON，简洁展示安全步骤。
+            不得建议拆机、带电维修、燃气复位或攀高。最后提醒用户选择“已解决”或“仍未解决”。
+        - id: advice-user
+          role: user
+          text: |-
+            故障：{{#start.complaint#}}
+            DormCare 返回：{{#advice_request.body#}}
+        selected: false
+        title: 输出排查建议
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: advice_llm
+      position:
+        x: 1690
+        y: 430
+      positionAbsolute:
+        x: 1690
+        y: 430
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: '='
+            id: resolved-condition
+            value: 'yes'
+            variable_selector:
+            - start
+            - resolved_after_check
+          logical_operator: and
+        desc: 用户完成自助排查后确认是否解决。
+        selected: false
+        title: 是否解决？
+        type: if-else
+      height: 126
+      id: resolved_gate
+      position:
+        x: 2010
+        y: 430
+      positionAbsolute:
+        x: 2010
+        y: 430
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+      zIndex: 0
+    - data:
+        answer: 自助排查后问题已解决，本次流程结束，不创建报修工单。
+        selected: false
+        title: 结束
+        type: answer
+        variables: []
+      height: 103
+      id: resolved_answer
+      position:
+        x: 2350
+        y: 270
+      positionAbsolute:
+        x: 2350
+        y: 270
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0
+          mode: chat
+          name: gpt-4o-mini
+          provider: langgenius/openai/openai
+        prompt_template:
+        - id: report-system
+          role: system
+          text: |-
+            你是报修信息整理助手。根据用户故障、地址、日期和时间窗，输出简短的报修确认摘要。
+            不要改变用户事实，不要编造维修时间或维修原因。指出缺失的时间窗或位置字段。
+        - id: report-user
+          role: user
+          text: |-
+            故障描述：{{#start.complaint#}}
+            位置：{{#start.location_json#}}
+            日期：{{#start.date#}}
+            时间窗：{{#start.slots_json#}}
+        selected: false
+        title: 路线二：补齐报修信息
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: report_info
+      position:
+        x: 2350
+        y: 650
+      positionAbsolute:
+        x: 2350
+        y: 650
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: |-
+            {
+              "complaint": "{{#start.complaint#}}",
+              "route": "direct_report",
+              "lang": "{{#start.lang#}}",
+              "date": "{{#start.date#}}",
+              "slots": {{#start.slots_json#}},
+              "location": {{#start.location_json#}},
+              "ai_reason": "{{#report_info.text#}}"
+            }
+          type: json
+        desc: DormCare 生成报修草稿，返回可嵌入现有项目的 JSON，不自动创建工单。
+        headers: |-
+          Content-Type: application/json
+          X-DormCare-Key: {{#start.dormcare_api_key#}}
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 2
+          retry_enabled: true
+          retry_interval: 200
+        selected: false
+        timeout:
+          max_connect_timeout: 30
+          max_read_timeout: 60
+          max_write_timeout: 30
+        title: 生成报修草稿，返回接口数据
+        type: http-request
+        url: '{{#start.dormcare_base_url#}}/api/dify/workflow'
+        variables: []
+      height: 166
+      id: report_request
+      position:
+        x: 2680
+        y: 650
+      positionAbsolute:
+        x: 2680
+        y: 650
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+      zIndex: 0
+    - data:
+        answer: |-
+          已整理报修草稿，下面是可嵌入 DormCare 或前端的接口数据：
+          {{#report_request.body#}}
+        selected: false
+        title: 返回接口数据
+        type: answer
+        variables: []
+      height: 126
+      id: report_answer
+      position:
+        x: 3020
+        y: 650
+      positionAbsolute:
+        x: 3020
+        y: 650
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.8
+  rag_pipeline_variables: []

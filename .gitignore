@@ -5,6 +5,7 @@ __pycache__/
 .Rhistory
 .env
 .env.*
+!.env.example
 api_key.env
 data/*.json
 data/uploads/

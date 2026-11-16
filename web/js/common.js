@@ -245,6 +245,9 @@ window.DC = (function () {
       photoRules: "JPG/PNG，每张不超过 5MB，最多 5 张。",
       photoInvalid: "仅支持每张不超过 5MB 的 JPG/PNG。",
       photoTooMany: "最多上传 5 张图片。",
+      agentPhotoRules: "JPG/PNG，每张不超过 5MB，每轮最多 {n} 张。",
+      agentPhotoTooMany: "当前 AI 受理每轮最多接收 {n} 张图片。",
+      agentImagesDelivered: "本轮已发送 {n} 张图片至 Dify。",
       photoRemove: "移除照片",
       agentPlaceholder: "继续描述故障或回答助手追问…",
       agentSend: "发送给 AI",
@@ -724,6 +727,9 @@ window.DC = (function () {
       photoRules: "JPG/PNG only, up to 5 MB each and 5 images.",
       photoInvalid: "Use JPG/PNG images no larger than 5 MB each.",
       photoTooMany: "Up to 5 images are allowed.",
+      agentPhotoRules: "JPG/PNG, up to 5 MB each and {n} images per turn.",
+      agentPhotoTooMany: "AI intake accepts at most {n} images per turn.",
+      agentImagesDelivered: "Sent {n} image(s) to Dify for this turn.",
       photoRemove: "Remove photo",
       agentPlaceholder: "Describe the fault or answer the assistant…",
       agentSend: "Send to AI",
@@ -1083,15 +1089,45 @@ window.DC = (function () {
   }
   DC.esc = esc;
 
-  function inline(s) {
-    return s
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  function markdownUrl(value) {
+    try {
+      var url = new URL(value);
+      return /^https?:\/\//i.test(value) &&
+        (url.protocol === "https:" || url.protocol === "http:") &&
+        !url.username && !url.password;
+    } catch (ignore) { return false; }
+  }
+
+  function inline(text) {
+    var pattern = /`([^`]+)`|(!?)\[([^\]\n]*)\]\(([^()\s]+)\)|\*\*([^*]+)\*\*/g;
+    var out = [], cursor = 0, match;
+    while ((match = pattern.exec(text))) {
+      out.push(esc(text.slice(cursor, match.index)));
+      if (match[1] !== undefined) {
+        out.push("<code>" + esc(match[1]) + "</code>");
+      } else if (match[5] !== undefined) {
+        out.push("<strong>" + inline(match[5]) + "</strong>");
+      } else if (markdownUrl(match[4])) {
+        var url = esc(match[4]);
+        var attrs = ' href="' + url + '" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"';
+        if (match[2]) {
+          out.push('<a class="markdown-image"' + attrs + '><img src="' + url +
+            '" alt="' + esc(match[3]) + '" loading="lazy" decoding="async" referrerpolicy="no-referrer"></a>');
+        } else {
+          out.push("<a" + attrs + ">" + esc(match[3]) + "</a>");
+        }
+      } else {
+        out.push(esc(match[0]));
+      }
+      cursor = pattern.lastIndex;
+    }
+    out.push(esc(text.slice(cursor)));
+    return out.join("");
   }
 
   /** Minimal, safe Markdown rendering for model output. */
   function md(text) {
-    var lines = esc(text || "").split(/\r?\n/);
+    var lines = String(text || "").split(/\r?\n/);
     var out = [], list = null;
     function closeList() { if (list) { out.push("</" + list + ">"); list = null; } }
     for (var i = 0; i < lines.length; i++) {
@@ -1236,7 +1272,7 @@ window.DC = (function () {
   function refreshHealth() {
     return api("/api/health").then(function (res) {
       var d = res.data || {};
-      DC.ready = !!d.key_configured;
+      DC.ready = !!(d.key_configured || (d.dify_enabled && DC.me && DC.me.role === "student"));
       if (DC.ready) setStatus("ready", "statusReady", { t: d.tickets, w: d.workers });
       else setStatus("warn", "statusNeedKey");
       var setup = document.getElementById("setup");

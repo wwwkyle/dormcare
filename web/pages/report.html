@@ -54,7 +54,7 @@
       <div class="agent-result" id="agentResult" hidden>
         <div class="safety-alert" id="safetyAlert" hidden></div>
         <div class="agent-meta" id="agentMeta"></div>
-        <p id="agentReply"></p>
+        <div id="agentReply" class="markdown-body"></div>
         <div id="agentMissing" hidden></div>
         <div class="question-options" id="questionOptions" hidden></div>
         <div class="route-actions" id="routeActions" hidden>
@@ -78,7 +78,7 @@
         </label>
         <span class="hint" id="speechHint" hidden></span>
       </div>
-      <p class="hint" data-i18n="photoRules">JPG/PNG，每张不超过 5MB，最多 5 张。</p>
+      <p class="hint" id="agentPhotoRules">JPG/PNG，每张不超过 5MB。</p>
       <div class="image-grid" id="photoPreview"></div>
       <div class="row">
         <button type="button" class="btn primary" id="agentSend" data-i18n="agentSend">发送给 AI</button>

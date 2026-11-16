@@ -489,6 +489,17 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 }
 .agent-result p { margin: 10px 0 0; }
 .agent-result ul { margin: 7px 0 0; padding-left: 20px; }
+.markdown-body { white-space: normal; overflow-wrap: anywhere; }
+.markdown-body p { margin: 10px 0; }
+.markdown-body ul, .markdown-body ol { margin: 8px 0; padding-left: 22px; }
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body > :last-child { margin-bottom: 0; }
+.markdown-image { display: block; width: fit-content; max-width: 100%; margin: 10px 0; }
+.markdown-image img {
+  display: block; max-width: 100%; max-height: 480px; height: auto;
+  object-fit: contain; border: 1px solid var(--line); border-radius: 8px;
+  background: #fff; cursor: zoom-in;
+}
 .agent-advice { background: #f5faf6; border-color: #cce4d4; }
 .agent-advice .row { margin-top: 0; }
 [hidden] { display: none !important; }
@@ -905,6 +916,10 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   background: var(--paper-2, #f5f7fa); margin: 8px 0;
 }
 .agent-log { max-height: 240px; overflow-y: auto; line-height: 1.65; }
+.agent-turn { white-space: normal; }
+.agent-turn + .agent-turn { margin-top: 14px; }
+.agent-turn > strong { display: block; margin-bottom: 4px; }
+.agent-user-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-draft .kv { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
 
 /* ---------------- responsive ---------------- */

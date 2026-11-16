@@ -28,6 +28,7 @@
   var publicArea = false;
   var reportUploads = [];
   var agentSessionId = "";
+  var agentRequestPending = false;
   var SESSION_KEY = "dormcare.agentSession";
   var draftSaveTimer = null;
   var identityDefaultsInitialized = false;
@@ -197,10 +198,20 @@
     });
   }
 
+  function agentImageLimit() {
+    return (DC.cfg && DC.cfg.agent_image_limit) || 5;
+  }
+
+  function renderPhotoRules() {
+    $("agentPhotoRules").textContent = fill(t("agentPhotoRules"), { n: agentImageLimit() });
+  }
+
   function uploadFiles(files, purpose) {
     var list = Array.prototype.slice.call(files || []);
     if (!list.length) return Promise.resolve([]);
-    if (list.length + reportUploads.length > 5) return Promise.reject(new Error(t("photoTooMany")));
+    if (list.length + reportUploads.length > agentImageLimit()) {
+      return Promise.reject(new Error(fill(t("agentPhotoTooMany"), { n: agentImageLimit() })));
+    }
     return Promise.all(list.map(fileData)).then(function (images) {
       return DC.post("/api/uploads", { purpose: purpose || "ticket", images: images });
     }).then(function (res) {
@@ -237,9 +248,13 @@
     var turns = conversation.slice();
     if (turns.length && turns[turns.length - 1].role === "assistant") turns.pop();
     log.hidden = !turns.length;
-    log.textContent = turns.map(function (x) {
-      return (x.role === "user" ? t("agentYou") : t("agentAssistant")) + "： " + x.text;
-    }).join("\n\n");
+    log.innerHTML = turns.map(function (turn) {
+      var assistant = turn.role === "assistant";
+      return '<div class="agent-turn"><strong>' +
+        esc(assistant ? t("agentAssistant") : t("agentYou")) + '：</strong><div class="' +
+        (assistant ? "markdown-body" : "agent-user-text") + '">' +
+        (assistant ? md(turn.text || "") : esc(turn.text || "")) + "</div></div>";
+    }).join("");
   }
 
   function applyAgentDraft(draft, noScroll) {
@@ -249,6 +264,17 @@
     if (draft.priority) selPriority = draft.priority;
     if (draft.title) $("fTitle").value = draft.title;
     if (draft.description) $("fDesc").value = draft.description;
+    if (typeof draft.public_area === "boolean") {
+      var user = DC.me || {};
+      publicArea = draft.public_area;
+      $("fPublic").checked = publicArea;
+      if (publicArea) $("fCollege").value = draft.college || user.college || "";
+      renderAddress();
+      if (publicArea) {
+        $("fBlock").value = draft.block || user.block || "";
+        $("fDorm").value = draft.dorm || "";
+      }
+    }
     $("formAiTag").hidden = false;
     renderTypeChips();
     renderPriorityChips();
@@ -269,11 +295,16 @@
     lastAgentResult = data;
     $("agentResult").hidden = false;
     $("agentResult").className = "agent-result";
-    $("agentReply").textContent = data.reply || "";
+    $("agentReply").innerHTML = md(data.reply || "");
     $("safetyAlert").hidden = true;
     $("safetyAlert").textContent = "";
     $("agentMeta").hidden = true;
     $("agentMeta").textContent = "";
+    if (data.image_delivery && data.image_delivery.status === "sent") {
+      $("agentMeta").hidden = false;
+      $("agentMeta").textContent = fill(t("agentImagesDelivered"), { n: data.image_delivery.count });
+    }
+    if (!data.ready && !data.complete && data.stage !== "manual") $("agentConfirm").hidden = true;
     var missing = data.missing || [];
     $("agentMissing").hidden = !missing.length;
     $("agentMissing").innerHTML = missing.length
@@ -303,13 +334,26 @@
     }
   }
 
+  function setAgentBusy(button, pending) {
+    agentRequestPending = pending;
+    DC.busy(button, pending);
+    var disabled = pending || (lastAgentResult && lastAgentResult.stage === "resolved");
+    ["agentSend", "agentResolved", "agentNeedRepair", "routeSelfHelp", "routeRepair"].forEach(function (id) {
+      $(id).disabled = !!disabled;
+    });
+    ["photoInput", "intakeClearBtn", "manualOpen"].forEach(function (id) {
+      $(id).disabled = pending;
+    });
+  }
+
   function sendAgentMessage() {
+    if (agentRequestPending) return;
     var text = $("intakeText").value.trim();
     if (!text && !reportUploads.length) {
       DC.setMsg($("agentMsg"), "err_empty_text", "err");
       return;
     }
-    DC.busy($("agentSend"), true);
+    setAgentBusy($("agentSend"), true);
     var start = agentSessionId ? Promise.resolve() :
       DC.post("/api/agent/session", { lang: DC.lang }).then(function (res) {
         if (!res.ok) throw new Error(DC.errorText(res.data));
@@ -345,21 +389,24 @@
       DC.setMsg($("agentMsg"), "", "err");
       $("agentMsg").textContent = t("agentFallback");
     }).then(function () {
-      DC.busy($("agentSend"), false);
+      setAgentBusy($("agentSend"), false);
     });
   }
 
   function agentAction(action) {
-    if (!agentSessionId) return;
+    if (!agentSessionId || agentRequestPending) return;
     var button = action === "resolved" ? $("agentResolved") :
       (action === "self_help" ? $("routeSelfHelp") :
-       $("routeRepair"));
-    DC.busy(button, true);
+       (action === "create_draft" ? $("agentNeedRepair") : $("routeRepair")));
+    setAgentBusy(button, true);
     DC.post("/api/agent/message", {
       id: agentSessionId, action: action, lang: DC.lang,
       image_ids: reportUploads.map(function (x) { return x.id; })
     }).then(function (res) {
       if (!res.ok) throw new Error(DC.errorText(res.data));
+      if (res.data.user_message) {
+        conversation.push({ role: "user", text: res.data.user_message });
+      }
       conversation.push({ role: "assistant", lang: res.data.lang || DC.lang,
                           text: res.data.reply || "" });
       renderConversation();
@@ -370,7 +417,7 @@
     }).catch(function (e) {
       DC.setMsg($("agentMsg"), "", "err");
       $("agentMsg").textContent = e.message;
-    }).then(function () { DC.busy(button, false); });
+    }).then(function () { setAgentBusy(button, false); });
   }
 
   function track(event, extra) {
@@ -433,7 +480,8 @@
   }
 
   function refreshDraftImages() {
-    if (!agentSessionId || !lastAgentDraft) return;
+    if (!agentSessionId || !lastAgentDraft || agentRequestPending) return;
+    setAgentBusy($("agentSend"), true);
     $("agentConfirm").hidden = true;
     DC.post("/api/agent/message", {
       id: agentSessionId, action: "create_draft", lang: DC.lang,
@@ -441,11 +489,11 @@
     }).then(function (res) {
       if (!res.ok) throw new Error(DC.errorText(res.data));
       renderAgentResult(res.data);
-      applyAgentDraft(res.data.draft, true);
+      if (res.data.ready) applyAgentDraft(res.data.draft, true);
     }).catch(function (e) {
       DC.setMsg($("agentMsg"), "", "err");
       $("agentMsg").textContent = e.message;
-    });
+    }).then(function () { setAgentBusy($("agentSend"), false); });
   }
 
   /* ====================================================================== */
@@ -547,6 +595,7 @@
         if (DC.me && DC.me.college) $("fCollege").value = DC.me.college;
       }
       renderAddress();
+      if (publicArea && DC.me && DC.me.block) $("fBlock").value = DC.me.block;
     });
 
     /* drag-select the availability grid */
@@ -598,7 +647,8 @@
     $("routeRepair").addEventListener("click", function () { agentAction("smart_repair"); });
     $("questionOptions").addEventListener("click", function (e) {
       var b = e.target.closest("[data-question-option]");
-      if (!b || !agentSessionId) return;
+      if (!b || !agentSessionId || agentRequestPending) return;
+      setAgentBusy(b, true);
       DC.post("/api/agent/message", {
         id: agentSessionId, lang: DC.lang,
         option: b.getAttribute("data-question-option"),
@@ -610,7 +660,7 @@
         track("question_answered");
       }).catch(function (e2) {
         DC.setMsg($("agentMsg"), "", "err"); $("agentMsg").textContent = e2.message;
-      });
+      }).then(function () { setAgentBusy(b, false); });
     });
     $("manualOpen").addEventListener("click", function () {
       if (agentSessionId) {
@@ -668,11 +718,15 @@
     $("draftSection").addEventListener("change", saveServerDraft);
 
     $("photoInput").addEventListener("change", function () {
+      if (agentRequestPending) return;
+      setAgentBusy($("agentSend"), true);
       uploadFiles(this.files, "agent").then(function (items) {
         reportUploads = reportUploads.concat(items);
         renderPhotos();
+        setAgentBusy($("agentSend"), false);
         refreshDraftImages();
       }).catch(function (e) {
+        setAgentBusy($("agentSend"), false);
         DC.setMsg($("agentMsg"), "", "err");
         $("agentMsg").textContent = e.message + " " + t("photoFallback");
       });
@@ -680,7 +734,7 @@
     });
     $("photoPreview").addEventListener("click", function (e) {
       var b = e.target.closest("[data-remove-photo]");
-      if (!b) return;
+      if (!b || agentRequestPending) return;
       reportUploads = reportUploads.filter(function (x) {
         return x.id !== b.getAttribute("data-remove-photo");
       });
@@ -751,6 +805,7 @@
     renderDateOptions();
     renderSlots();
     renderAddress();
+    renderPhotoRules();
     var contactHint = $("contactHint");
     if (contactHint && !contactHint.hidden) contactHint.textContent = t("contactMissingPhone");
     renderConversation();
@@ -773,11 +828,13 @@
       // when it appears.
       if (user && user.college) $("fCollege").value = user.college;
       renderBlockOptions();
+      if (user && user.block) $("fBlock").value = user.block;
       renderTypeChips();
       renderPriorityChips();
       renderDateOptions();
       renderSlots();
       renderAddress(user);
+      renderPhotoRules();
       initializeIdentityDefaults(user);
       return restoreAgentSession();
     });

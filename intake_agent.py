@@ -5,11 +5,14 @@ import os
 import re
 import time
 
+import dify_client
 from agent_prompts import advice_prompt, intake_prompt
 from agent_tools import (build_draft, confidence_for, next_question_for,
                          validate_draft)
 from ai_agents import SELF_HELP, call_model
+from config import REPAIR_BY_ID, REPAIR_TYPES
 from knowledge_base import advice_for_student
+from scheduler import PRIORITY_LEVELS
 
 
 SAFE_SELF_HELP_TYPES = {
@@ -17,6 +20,8 @@ SAFE_SELF_HELP_TYPES = {
 }
 
 KB_STATUS = "ready"
+DIFY_COLLECTING_REPLY = "请问是哪件设施出了什么问题？可以简单描述一下现象。"
+DIFY_RESOLVED_REPLY = "好的，问题解决了就好！如果之后还有其他设施问题，随时来找我。"
 
 UNRESOLVED_WORDS = (
     "未解决", "没恢复", "没有恢复", "还是不行", "仍然", "无效",
@@ -42,12 +47,14 @@ def _enrich(result, session, draft, lang):
     emergency = bool(result.get("safety_warning") or
                      draft.get("priority") == "urgent")
     advice_state = result.get("stage") in ("advice", "no_solution")
-    question = None if emergency or advice_state else next_question_for(
-        session.get("history") or [], draft, lang)
-    if result.get("stage") == "follow_up" and question:
-        result["missing"] = [question["text"]]
-    elif result.get("stage") == "follow_up":
-        result["missing"] = (result.get("missing") or [])[:1]
+    if result.get("source") in ("dify", "dify_error"):
+        question = result.get("next_question")
+    else:
+        question = None if emergency or advice_state else next_question_for(
+            session.get("history") or [], draft, lang)
+    if result.get("stage") == "follow_up" and result.get("source") not in ("dify", "dify_error"):
+        result["missing"] = ([question["text"]] if question else
+                             (result.get("missing") or [])[:1])
     steps = [{"text": tip, "image_url": None}
              for tip in (result.get("self_help") or [])]
     result.update({
@@ -363,23 +370,171 @@ def _advice_from_model(api_key, model, session, user, lang, store, upload_dir, d
     }
 
 
+def _dify_result(response, session, local_draft, warning, lang, user):
+    answer = response["answer"].strip()
+    data = {}
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", answer):
+        try:
+            candidate, _unused = decoder.raw_decode(answer[match.start():])
+        except ValueError:
+            continue
+        if isinstance(candidate, dict) and any(name in candidate for name in (
+                "reply", "message", "draft", "ticket_payload", "route", "stage", "state", "status")):
+            data = candidate
+            break
+    if data.get("ok") is False:
+        raise dify_client.DifyError("workflow_failed")
+    draft = dict(local_draft)
+    flat_draft = data.get("status") == "draft"
+    remote_draft = data if flat_draft else data.get("ticket_payload") or data.get("draft")
+    if flat_draft:
+        categories = {repair["zh"]: repair["id"] for repair in REPAIR_TYPES}
+        urgencies = {labels["zh"]: priority for priority, labels in PRIORITY_LEVELS.items()}
+        draft.update({
+            "title": "", "description": "", "public_area": data.get("is_public_area") is True,
+            "repair_type": categories.get(str(data.get("category") or "").strip(), "other"),
+            "priority": urgencies.get(str(data.get("urgency") or "").strip(), "normal"),
+        })
+        if draft["public_area"]:
+            draft["college"] = user.get("college", "")
+            draft["block"] = user.get("block", "")
+            draft["dorm"] = str(data.get("location") or "").strip()[:40]
+    if isinstance(remote_draft, dict):
+        for name in ("title", "description"):
+            if isinstance(remote_draft.get(name), str) and remote_draft[name].strip():
+                draft[name] = remote_draft[name][:1000 if name == "description" else 60]
+        if (isinstance(remote_draft.get("repair_type"), str)
+                and remote_draft["repair_type"] in REPAIR_BY_ID):
+            draft["repair_type"] = remote_draft["repair_type"]
+        if remote_draft.get("priority") in ("urgent", "high", "normal", "low"):
+            draft["priority"] = remote_draft["priority"]
+    remote_warning = data.get("safety_warning")
+    if not warning and isinstance(remote_warning, str) and _lang_ok(remote_warning, lang):
+        warning = remote_warning
+    emergency = bool(warning or data.get("emergency") or draft.get("priority") == "urgent")
+    if emergency:
+        draft["priority"] = "urgent"
+        warning = warning or ("请远离危险区域并联系校园保卫或宿管，不要自行拆修。"
+                              if lang == "zh" else
+                              "Leave the danger area and contact campus security or residence staff. Do not attempt repairs.")
+    stage = data.get("stage") or data.get("state") or data.get("status")
+    incomplete = stage == "follow_up" or data.get("complete") is False
+    ticket_route = (data.get("route") == "direct_report"
+                    or stage == "draft" or data.get("complete") is True)
+    reply = data.get("reply") or data.get("message") or answer
+    if flat_draft:
+        reply = (("报修草稿已整理，请核对内容、地点并选择上门时间后确认提交。" if lang == "zh" else
+                  "Your repair draft is ready. Check the details and location, select a visit time, and confirm.")
+                 if validate_draft(draft) else
+                 ("Dify 返回的草稿缺少故障描述，请继续补充或改为手动填写。" if lang == "zh" else
+                  "Dify returned a draft without a fault description. Add details or switch to manual entry."))
+    elif not data:
+        if answer == DIFY_RESOLVED_REPLY:
+            stage = "resolved"
+            if lang == "en":
+                reply = "Glad the problem is resolved. Come back if another issue occurs."
+        elif answer == DIFY_COLLECTING_REPLY:
+            stage = "follow_up"
+            incomplete = True
+            if lang == "en":
+                reply = "Which facility has a problem? Briefly describe what happens."
+    if not isinstance(reply, str) or not _lang_ok(reply, lang):
+        raise dify_client.DifyError("invalid_answer_language")
+    if emergency:
+        result = _fallback(draft, True, warning, lang, True)
+    elif stage in ("resolved", "route_choice", "advice", "no_solution"):
+        result = _advice(draft, lang)
+        result.update({"stage": stage, "state": stage, "self_help": []})
+    elif incomplete or (ticket_route and not validate_draft(draft)):
+        result = _fallback(draft, False, warning, lang)
+        missing = data.get("missing")
+        result["missing"] = []
+        if isinstance(missing, list):
+            result["missing"] = [item[:500] for item in missing
+                                 if isinstance(item, str) and _lang_ok(item, lang)][:5]
+        if result["missing"]:
+            result["next_question"] = {
+                "field": "details", "text": result["missing"][0], "options": [],
+            }
+    elif ticket_route:
+        result = _fallback(draft, True, warning, lang, True)
+    else:
+        result = _advice(draft, lang)
+    if emergency:
+        reply = warning + "\n" + result["reply"]
+    result.update({"reply": reply, "source": "dify", "safety_warning": warning})
+    if result["stage"] == "resolved":
+        result["draft"] = None
+    if result["stage"] == "advice":
+        knowledge = data.get("knowledge")
+        steps = knowledge.get("steps") if isinstance(knowledge, dict) else []
+        tips = []
+        for item in steps if isinstance(steps, list) else []:
+            tip = item.get("text") if isinstance(item, dict) else item
+            if isinstance(tip, str) and tip.strip() and _lang_ok(tip, lang):
+                tips.append(tip[:1000])
+        result["self_help"] = tips[:5]
+        result["solution"] = ({"source": "dify", "safety_reviewed": False,
+                               "steps": [{"text": tip, "image_url": None}
+                                         for tip in tips[:5]]} if tips else None)
+        result["active_route"] = "self_help"
+    result = _enrich(result, session, draft, lang)
+    result["dify_conversation_id"] = response["conversation_id"]
+    result["dify_lang"] = lang
+    if "dify_files" in response:
+        result["dify_files"] = response["dify_files"]
+        result["dify_files_scope"] = response["dify_files_scope"]
+    if session.get("image_ids"):
+        result["image_delivery"] = {"status": "sent", "count": len(session["image_ids"])}
+    return result
+
+
 def respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
             force_draft=False, advice_mode=False):
     history = session.get("history") or []
     image_ids = session.get("image_ids") or []
     local_draft, enough, warning = build_draft(history, image_ids, user, lang)
+    dify_failed = False
+    if dify_client.enabled():
+        if warning:
+            result = _fallback(local_draft, enough, warning, lang, True)
+            result["reply"] = warning + "\n" + result["reply"]
+            return _enrich(result, session, local_draft, lang)
+        try:
+            response = dify_client.chat(session, user, lang, force_draft, advice_mode,
+                                        store=store, upload_dir=upload_dir)
+            return _dify_result(response, session, local_draft, warning, lang, user)
+        except dify_client.DifyError:
+            if image_ids:
+                result = {
+                    "reply": ("本轮图片未能由 Dify 成功处理，请重试；图片仍保留在本系统，也可以改为手动报修。"
+                              if lang == "zh" else
+                              "Dify could not process this image request. Retry or use manual entry; your images are still saved here."),
+                    "stage": "follow_up", "complete": False, "draft": local_draft,
+                    "missing": [], "self_help": [], "source": "dify_error", "safety_warning": "",
+                    "image_delivery": {"status": "failed", "count": 0},
+                }
+                return _enrich(result, session, local_draft, lang)
+            dify_failed = True
     if advice_mode or (session.get("active_route") == "self_help" and not force_draft):
         advice = _advice_from_model(
             api_key, model, session, user, lang, store, upload_dir, local_draft)
+        if dify_failed:
+            if not api_key:
+                advice = _advice_turn(local_draft, lang, user=user, history=history)
+            advice["source"] = "fallback_after_dify_error"
         return _enrich(advice, session, local_draft, lang)
     if force_draft:
-        return _enrich(
-            _fallback(local_draft, enough, warning, lang, True),
-            session, local_draft, lang)
+        result = _fallback(local_draft, enough, warning, lang, True)
+        if dify_failed:
+            result["source"] = "fallback_after_dify_error"
+        return _enrich(result, session, local_draft, lang)
     if not api_key:
-        return _enrich(
-            _fallback(local_draft, enough, warning, lang, force_draft),
-            session, local_draft, lang)
+        result = _fallback(local_draft, enough, warning, lang, force_draft)
+        if dify_failed:
+            result["source"] = "fallback_after_dify_error"
+        return _enrich(result, session, local_draft, lang)
 
     messages = None
     for attempt in range(2):

@@ -11,8 +11,9 @@ HIGH_RISK = ("漏电", "触电", "火花", "燃气", "煤气", "冒烟", "起火
 
 
 def build_draft(history, image_ids, user, lang="zh"):
-    text = "\n".join(str(x.get("content") or "") for x in history
-                     if x.get("role") == "user").strip()
+    text = "\n".join(
+        str(item.get("fault_text" if item.get("action") else "content") or "")
+        for item in history if item.get("role") == "user").strip()
     classified = fallback_classify(text, lang)
     risky = any(word in text.lower() for word in HIGH_RISK)
     if risky:
@@ -60,8 +61,9 @@ def build_draft(history, image_ids, user, lang="zh"):
 
 
 def confidence_for(history, draft):
-    text = " ".join(str(x.get("content") or "") for x in history
-                    if x.get("role") == "user").strip()
+    text = " ".join(
+        str(item.get("fault_text" if item.get("action") else "content") or "")
+        for item in history if item.get("role") == "user").strip()
     if not text:
         return "low"
     if draft.get("priority") == "urgent" or len(text) >= 24:
@@ -71,8 +73,9 @@ def confidence_for(history, draft):
 
 def next_question_for(history, draft, lang="zh"):
     """Return exactly one highest-priority question and safe click choices."""
-    text = " ".join(str(x.get("content") or "") for x in history
-                    if x.get("role") == "user").strip()
+    text = " ".join(
+        str(item.get("fault_text" if item.get("action") else "content") or "")
+        for item in history if item.get("role") == "user").strip()
     if len(text) < (12 if lang == "zh" else 30):
         return {
             "field": "phenomenon",

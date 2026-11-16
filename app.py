@@ -43,9 +43,8 @@ away. The key enrolment endpoint accepts an administrator only.
 
 Security
 --------
-* The OpenRouter key lives in process memory / environment only. It is never
-  written into this directory (every file here becomes publicly downloadable
-  once the app is published), never logged and never sent to the browser.
+* API keys stay on the server, in its environment or a Git-ignored local .env
+  file. They are never logged or sent to the browser.
 * Passwords are stored as PBKDF2-SHA256 digests with a per-user salt.
 * Session cookies are HttpOnly + SameSite=Lax and the token is opaque, so a
   session can be revoked server-side on logout.
@@ -70,8 +69,14 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from env_config import load_env
+
+load_env(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
 import ai_agents
 import auth
+import dify_client
+import dify_integration
 import intake_agent
 from ai_agents import (AIError, DEFAULT_MODEL, MSG_NOT_IN_KB, MSG_OUT_OF_SCOPE,
                        PROVIDERS, advise_dispatch, advise_student, clear_api_base,
@@ -101,6 +106,7 @@ DATA_FILE = (os.environ.get("DORMCARE_DATA")
              or os.path.join(BASE_DIR, "data", "store.json"))
 
 MAX_BODY_BYTES = 36 * 1024 * 1024
+DIFY_API_KEY = os.environ.get("DORMCARE_DIFY_API_KEY", "").strip()
 UPLOAD_DIR = (os.environ.get("DORMCARE_UPLOAD_DIR")
               or os.path.join(os.path.dirname(os.path.abspath(DATA_FILE)), "uploads"))
 RATE_LIMIT_MAX = 120
@@ -1201,6 +1207,7 @@ class Handler(BaseHTTPRequestHandler):
                 "app": "DormCare",
                 "model": self.model,
                 "key_configured": bool(self.api_key),
+                "dify_enabled": dify_client.enabled(),
                 "enrollable": (self.key_source != "env" and not self.api_key
                                and bool(self.user) and self.user.get("role") == ROLE_ADMIN),
                 "provider": self.provider or "",
@@ -1232,6 +1239,7 @@ class Handler(BaseHTTPRequestHandler):
                 "travel_rules": TRAVEL_RULES,
                 "priorities": PRIORITY_LEVELS,
                 "slot_minutes": SLOT_MINUTES,
+                "agent_image_limit": dify_client.MAX_IMAGES if dify_client.enabled() else MAX_IMAGES,
                 "days": [d.isoformat() for d in
                          next_workdays(date.today(), TRAVEL_RULES["scheduling_days"])],
             })
@@ -1428,7 +1436,7 @@ class Handler(BaseHTTPRequestHandler):
             "safety_warning", "resolved", "ticket_id", "route_options",
             "emergency", "confidence", "kb_status", "solution",
             "next_question", "question_options", "state", "response_mode",
-            "active_route", "agent_status")}
+            "active_route", "agent_status", "source", "image_delivery")}
         # Legacy sessions may contain the removed human-handoff state/option.
         routes = [
             item for item in (view.get("route_options") or [])
@@ -1502,6 +1510,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/account/password": self._api_account_password,
             "/api/intake/parse": self._api_intake_parse,
             "/api/intake/advice": self._api_intake_advice,
+            "/api/dify/workflow": self._api_dify_workflow,
             "/api/uploads": self._api_uploads,
             "/api/agent/session": self._api_agent_session,
             "/api/agent/message": self._api_agent_message,
@@ -1873,6 +1882,23 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- student: AI intake ---------------------------------------------- #
 
+    def _api_dify_workflow(self, body, ip):
+        """Public, key-protected JSON adapter for Dify HTTP Request nodes."""
+        request_key = self.headers.get("X-DormCare-Key", "")
+        if not request_key:
+            authorization = self.headers.get("Authorization", "")
+            if authorization.lower().startswith("bearer "):
+                request_key = authorization[7:].strip()
+        if not dify_integration.authorized(request_key, DIFY_API_KEY):
+            self._err(401, "dify_auth_required", "A valid DormCare Dify key is required.")
+            return
+        try:
+            result = dify_integration.build_workflow_result(body)
+        except ValueError as exc:
+            self._err(400, "bad_workflow_input", str(exc))
+            return
+        self._json(200, result)
+
     def _api_intake_parse(self, body, ip):
         if not self._require(ROLE_STUDENT):
             return
@@ -2030,11 +2056,13 @@ class Handler(BaseHTTPRequestHandler):
                              "lang": lang,
                              "session": self._agent_session_view(session)})
             return
-        if action == "resolved":
+        if action == "resolved" and not dify_client.enabled():
             reply = ("已结束本次受理，不会创建工单。"
                      if lang == "zh"
                      else "This intake is closed. No ticket was created.")
             history = list(session.get("history") or [])
+            history.append({"role": "user", "content": dify_client.action_text(action, lang),
+                            "action": action, "lang": lang})
             history.append({"role": "assistant", "content": reply, "lang": lang})
             session = STORE.update_agent_session(session["id"], {
                 "stage": "resolved", "resolved": True, "ready": False,
@@ -2046,6 +2074,7 @@ class Handler(BaseHTTPRequestHandler):
                 "reply": reply, "lang": lang,
                 "detected": session.get("detected") or {}, "missing": [],
                 "self_help": [], "safety_warning": "", "source": "rules",
+                "user_message": dify_client.action_text(action, lang),
             })
             return
         if session.get("resolved"):
@@ -2065,11 +2094,21 @@ class Handler(BaseHTTPRequestHandler):
                           agent_error("bad_question_option", lang), lang)
                 return
             text = str(match.get("label") or selected)[:200]
+        fault_text = text
+        intent = dify_client.action_text(action, lang)
+        if intent:
+            text = intent + ("\n" + text if text else "")
         image_ids = (body.get("image_ids") if "image_ids" in body
                      else session.get("image_ids") or [])
         if not isinstance(image_ids, list) or len(image_ids) > MAX_IMAGES:
             self._err(400, "too_many_images",
                       agent_error("too_many_images", lang), lang)
+            return
+        if dify_client.enabled() and len(image_ids) > dify_client.MAX_IMAGES:
+            self._err(400, "too_many_images",
+                      ("当前 Dify 工作流每轮最多接收 %d 张图片。" % dify_client.MAX_IMAGES
+                       if lang == "zh" else
+                       "This Dify workflow accepts at most %d images per turn." % dify_client.MAX_IMAGES), lang)
             return
         if not text and not image_ids and not force_draft and action != "self_help":
             self._err(400, "empty_text", agent_error("empty_text", lang), lang)
@@ -2091,6 +2130,8 @@ class Handler(BaseHTTPRequestHandler):
                 "image_ids": clean_images,
                 "transcript": bool(body.get("transcript")),
                 "lang": lang,
+                "action": action,
+                "fault_text": fault_text,
             })
         session = STORE.update_agent_session(session["id"], {
             "history": history[-30:],
@@ -2098,20 +2139,31 @@ class Handler(BaseHTTPRequestHandler):
             # Replacing (rather than unioning) also makes preview deletion real.
             "image_ids": list(dict.fromkeys(clean_images)),
         })
-        wants_ticket = force_draft or intake_agent.student_wants_ticket(text)
-        wants_advice = (not wants_ticket) and (
-            action == "self_help"
-            or session.get("active_route") == "self_help"
-            or intake_agent.student_wants_advice(text)
-            or first_turn)
+        if dify_client.enabled():
+            wants_ticket = force_draft
+            wants_advice = action == "self_help"
+        else:
+            wants_ticket = force_draft or intake_agent.student_wants_ticket(text)
+            wants_advice = (not wants_ticket) and (
+                action == "self_help"
+                or session.get("active_route") == "self_help"
+                or intake_agent.student_wants_advice(text)
+                or first_turn)
         result = intake_agent.respond(self.api_key, self.model, session, user,
                                       lang, STORE, UPLOAD_DIR,
                                       force_draft=wants_ticket,
                                       advice_mode=wants_advice)
         if session.get("draft") and result.get("draft") and (
-                force_draft or result.get("stage") in ("advice", "no_solution")):
+                result.get("source") == "dify" or force_draft
+                or result.get("stage") in ("advice", "no_solution")):
             merged = dict(result["draft"])
-            merged.update(session["draft"])
+            previous = session["draft"]
+            if result.get("source") == "dify":
+                previous = {name: previous[name] for name in (
+                    "expected_date", "slots", "contact", "public_area", "college", "block", "dorm"
+                ) if name in previous and (name in ("expected_date", "slots", "contact")
+                                          or name not in merged)}
+            merged.update(previous)
             merged["image_ids"] = list(session.get("image_ids") or [])
             if result.get("emergency"):
                 merged["priority"] = "urgent"
@@ -2123,6 +2175,7 @@ class Handler(BaseHTTPRequestHandler):
             "history": history[-30:], "draft": result.get("draft"), "lang": lang,
             "ready": bool(result.get("complete")),
             "stage": result.get("stage", "follow_up"),
+            "resolved": result.get("stage") == "resolved",
             "detected": result.get("detected") or {},
             "missing": result.get("missing") or [],
             "self_help": result.get("self_help") or [],
@@ -2136,16 +2189,25 @@ class Handler(BaseHTTPRequestHandler):
             "question_options": result.get("question_options") or [],
             "state": result.get("state", result.get("stage", "follow_up")),
             "response_mode": result.get("response_mode", "complete"),
+            "source": result.get("source"),
+            "image_delivery": result.get("image_delivery"),
+            "dify_files": result.get("dify_files", session.get("dify_files", {})),
+            "dify_files_scope": result.get("dify_files_scope", session.get("dify_files_scope", "")),
             "active_route": (result.get("active_route") or
                              ("self_help" if result.get("stage") == "advice"
                              else ("smart_repair" if force_draft
                                    else session.get("active_route", "")))),
+            "dify_conversation_id": (result.get("dify_conversation_id") or
+                                     session.get("dify_conversation_id", "")),
+            "dify_lang": result.get("dify_lang") or session.get("dify_lang", ""),
         })
         self._json(200, {"ok": True,
                          "lang": lang,
                          "contract_version": result.get("contract_version", 2),
                          "reply": result.get("reply", ""),
+                         "user_message": text if intent else "",
                          "source": result.get("source"), "ready": session.get("ready"),
+                         "image_delivery": result.get("image_delivery"),
                          "draft": session.get("draft"),
                          "stage": session.get("stage"),
                          "detected": session.get("detected") or {},

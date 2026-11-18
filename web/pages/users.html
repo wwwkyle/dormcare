@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title data-i18n="adUsersPageTitle">账号管理 · DormCare</title>
+<title data-i18n="adPeopleTitle">人员管理 · DormCare</title>
 <meta name="description" content="DormCare 管理员端 — 更正宿舍、重置密码、发放账号。Account management of DormCare.">
 <link rel="stylesheet" href="/styles.css">
 </head>
@@ -14,7 +14,7 @@
     <div class="brand">
       <div class="mark admin" aria-hidden="true">🧭</div>
       <div class="brand-text">
-        <h1 data-i18n="adUsersPageTitle">账号管理 · DormCare</h1>
+        <h1 data-i18n="adPeopleTitle">人员管理 · DormCare</h1>
         <p data-i18n="adminSub">DormCare 运维管理台</p>
       </div>
     </div>
@@ -35,13 +35,13 @@
     <div class="userchip" id="userChip" hidden></div>
   </nav>
 
-<nav class="workspace-nav" data-i18n-aria="navLabel" aria-label="功能导航"><a href="/menu.html" data-i18n="backMenu">主菜单</a><a href="/overview.html" data-i18n="menuAdminOverview"></a><a href="/tickets.html" data-i18n="menuAdminTickets"></a><a href="/users.html" aria-current="page" data-i18n="menuAdminUsers"></a><a href="/roster.html" data-i18n="menuAdminRoster"></a><a href="/model.html" data-i18n="menuAdminModel"></a><a href="/account.html" data-i18n="menuAdminAccount"></a></nav>
+<nav class="workspace-nav" data-i18n-aria="navLabel" aria-label="功能导航"><a href="/menu.html" data-i18n="backMenu">主菜单</a><a href="/overview.html" data-i18n="menuAdminOverview">运行总览</a><a href="/tickets.html" data-i18n="menuAdminTickets">全部工单</a><a href="/users.html" aria-current="page" data-i18n="menuAdminPeople">人员管理</a><a href="/model.html" data-i18n="menuAdminSettings">系统设置</a></nav>
   <main class="stack">
-<div class="page-intro"><p data-i18n="usersIntro"></p></div>
+<div class="page-intro"><p data-i18n="adPeopleIntro"></p></div>
 
     <section class="card">
       <div class="card-head">
-        <h2><span aria-hidden="true">👥</span> <span data-i18n="adUsersSection">账号管理</span></h2>
+        <h2><span aria-hidden="true">👥</span> <span data-i18n="menuAdminPeople">人员管理</span></h2>
         <div class="head-actions">
           <span class="count" id="adUserCount"></span>
           <button type="button" class="btn tiny" id="adReload" data-i18n="adReload">刷新</button>
@@ -118,6 +118,8 @@
         <p class="form-msg" id="adCreateMsg"></p>
       </div>
 
+      <label class="lbl" for="adPeopleSearch" data-i18n="adSearchPeople"></label>
+      <input type="search" id="adPeopleSearch" autocomplete="off" data-i18n-ph="adSearchPeople">
       <div class="ad-list" id="adUserList"></div>
     </section>
 

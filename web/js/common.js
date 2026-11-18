@@ -98,10 +98,40 @@ window.DC = (function () {
       menuWorkerPoolSub: "接单和完工",
       menuWorkerAccount: "账号设置",
       menuWorkerAccountSub: "改密码",
+      menuAdminPeople: "人员管理",
+      menuAdminPeopleSub: "管理学生、师傅与管理员",
+      menuAdminSettings: "系统设置",
+      menuAdminSettingsSub: "AI 模型配置与账号安全",
+      adDistribution: "工单分布",
+      adPendingTickets: "待处理工单",
+      adTicketTotal: "共 {n} 单",
+      adReportedAt: "报修时间",
+      adAppointment: "预约时间",
+      adAppointmentPassed: "预约时间已过",
+      adNoAppointment: "尚未确定",
+      adScheduledDate: "维修日期",
+      adSearchPeople: "搜索姓名或账号",
+      adPeopleWorker: "维修师傅",
+      adNoPeople: "没有匹配的人员",
+      adPeopleGroup: "{role}（{n}）",
+      adAISettings: "AI 模型配置",
+      adAccountSecurity: "账号安全",
+      adStatus_pending: "待受理",
+      adStatus_accepted: "已接单",
+      adStatus_done: "已完工",
+      adStatus_confirmed: "已验收",
+      adCertifiedValue: "是",
+      adUncertifiedValue: "否",
+      adPeopleTitle: "人员管理 · DormCare",
+      adSettingsTitle: "系统设置 · DormCare",
+      adPeopleIntro: "集中管理管理员、学生与维修师傅，查找账号和维修资料。",
+      adSettingsIntro: "配置 AI 模型并管理当前账号的密码安全。",
+      menuAdminDailyHeading: "日常管理",
+      menuAdminSettingsHeading: "系统与账号设置",
       menuAdminOverview: "运行总览",
-      menuAdminOverviewSub: "查看运行统计",
+      menuAdminOverviewSub: "查看维修运行情况",
       menuAdminTickets: "全部工单",
-      menuAdminTicketsSub: "查看和修改全部工单",
+      menuAdminTicketsSub: "处理与跟踪维修任务",
       menuAdminUsers: "账号管理",
       menuAdminUsersSub: "管理账号和密码",
       menuAdminRoster: "维修班组",
@@ -471,7 +501,7 @@ window.DC = (function () {
       roleAdmin: "管理员",
       adminTitle: "管理员端 · 运行总览",
       adminSub: "DormCare 运维管理台",
-      adminIdentityBar: "运维账号 {id}",
+      adminIdentityBar: "欢迎回来",
       adTotalTickets: "全部工单",
       adStudents: "学生账号",
       adWorkersCount: "师傅账号",
@@ -620,10 +650,40 @@ window.DC = (function () {
       menuWorkerPoolSub: "Accept and complete jobs",
       menuWorkerAccount: "Account settings",
       menuWorkerAccountSub: "Change password",
+      menuAdminPeople: "People",
+      menuAdminPeopleSub: "Manage students, technicians and administrators",
+      menuAdminSettings: "System settings",
+      menuAdminSettingsSub: "AI model configuration and account security",
+      adDistribution: "Ticket distribution",
+      adPendingTickets: "Pending tickets",
+      adTicketTotal: "{n} tickets in total",
+      adReportedAt: "Reported at",
+      adAppointment: "Appointment",
+      adAppointmentPassed: "Appointment has passed",
+      adNoAppointment: "Not yet scheduled",
+      adScheduledDate: "Repair date",
+      adSearchPeople: "Search by name or account",
+      adPeopleWorker: "Technicians",
+      adNoPeople: "No matching people",
+      adPeopleGroup: "{role} ({n})",
+      adAISettings: "AI model configuration",
+      adAccountSecurity: "Account security",
+      adStatus_pending: "Pending",
+      adStatus_accepted: "Accepted",
+      adStatus_done: "Completed",
+      adStatus_confirmed: "Confirmed",
+      adCertifiedValue: "Yes",
+      adUncertifiedValue: "No",
+      adPeopleTitle: "People · DormCare",
+      adSettingsTitle: "System settings · DormCare",
+      adPeopleIntro: "Manage administrators, students and technicians, including account and repair details.",
+      adSettingsIntro: "Configure the AI model and manage your account password.",
+      menuAdminDailyHeading: "Daily Management",
+      menuAdminSettingsHeading: "System & Account Settings",
       menuAdminOverview: "Operations overview",
-      menuAdminOverviewSub: "See the numbers",
+      menuAdminOverviewSub: "Review repair operations",
       menuAdminTickets: "All tickets",
-      menuAdminTicketsSub: "View and edit every ticket",
+      menuAdminTicketsSub: "Manage and track repair tasks",
       menuAdminUsers: "Accounts",
       menuAdminUsersSub: "Accounts and passwords",
       menuAdminRoster: "Technician roster",
@@ -982,7 +1042,7 @@ window.DC = (function () {
       roleAdmin: "Administrator",
       adminTitle: "Administrator · Operations overview",
       adminSub: "DormCare operations console",
-      adminIdentityBar: "Operations account {id}",
+      adminIdentityBar: "Welcome back",
       adTotalTickets: "All tickets",
       adStudents: "Student accounts",
       adWorkersCount: "Technician accounts",
@@ -1432,7 +1492,33 @@ window.DC = (function () {
   }
   DC.roleLabel = roleLabel;
 
+  function renderAdminNav() {
+    if (!DC.me || DC.me.role !== "admin") return;
+    document.body.classList.add("admin-console");
+    var nav = document.querySelector(".workspace-nav");
+    if (!nav) {
+      var bar = document.querySelector(".rolebar");
+      if (!bar) return;
+      nav = document.createElement("nav");
+      nav.className = "workspace-nav";
+      bar.insertAdjacentElement("afterend", nav);
+    }
+    nav.setAttribute("aria-label", t("navLabel"));
+    var current = window.location.pathname;
+    if (current === "/roster.html") current = "/users.html";
+    if (current === "/account.html") current = "/model.html";
+    nav.innerHTML = [
+      ["/menu.html", "backMenu"], ["/overview.html", "menuAdminOverview"],
+      ["/tickets.html", "menuAdminTickets"], ["/users.html", "menuAdminPeople"],
+      ["/model.html", "menuAdminSettings"]
+    ].map(function (item) {
+      return '<a href="' + item[0] + '"' +
+        (current === item[0] ? ' aria-current="page"' : "") + '>' + esc(t(item[1])) + '</a>';
+    }).join("");
+  }
+
   function renderUser() {
+    renderAdminNav();
     var chip = document.getElementById("userChip");
     if (!chip) return;
     if (!DC.me) { chip.hidden = true; return; }
@@ -1442,12 +1528,13 @@ window.DC = (function () {
     // The label is written here rather than declared as data-i18n: this element
     // is rebuilt by renderUser() on every language change, so a static i18n
     // pass over it would be overwritten anyway. One source of truth.
-    chip.innerHTML =
-      '<span class="who"><span class="who-role ' + esc(DC.me.role) + '">' +
+    chip.innerHTML = (DC.me.role === "admin"
+      ? '<span class="who"><code class="who-id">' + esc(id) + '</code></span>'
+      : '<span class="who"><span class="who-role ' + esc(DC.me.role) + '">' +
       esc(roleLabel(DC.me.role)) + "</span>" +
       '<span class="who-name">' + esc(name) + "</span>" +
       (id ? '<code class="who-id">' + esc(id) + "</code>" : "") +
-      "</span>" +
+      "</span>") +
       '<a class="btn tiny ghost" href="' + MENU + '">' +
       '<span aria-hidden="true">☰</span> ' + esc(t("backMenu")) + "</a>" +
       '<button type="button" class="btn tiny ghost" id="logoutBtn">' +

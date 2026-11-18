@@ -51,11 +51,8 @@
     var tot = o.totals || {}, today = o.today || {}, fb = o.feedback || {};
     box.innerHTML = [
       statCard(tot.tickets || 0, t("adTotalTickets")),
-      statCard(tot.students || 0, t("adStudents")),
-      statCard(tot.workers || 0, t("adWorkersCount")),
-      statCard(tot.roster || 0, t("adRoster")),
       statCard(today.tickets || 0, t("adToday")),
-      statCard(today.open || 0, t("adTodayOpen"), (today.open || 0) > 0),
+      statCard(today.open || 0, t("adPendingTickets"), (today.open || 0) > 0),
       statCard(fb.rated ? fb.average : t("unitNone"), t("adAvgRating"))
     ].join("");
   }
@@ -63,16 +60,16 @@
   var STATUS_ORDER = ["pending", "accepted", "done", "confirmed"];
   var PRIORITY_ORDER = ["urgent", "high", "normal", "low"];
 
-  function breakdownGroup(title, counts, labels, order) {
-    var keys = order.filter(function (k) { return counts[k] !== undefined; });
+  function breakdownGroup(title, counts, labels, order, kind) {
+    var keys = kind ? order.slice() : order.filter(function (k) { return counts[k] !== undefined; });
     Object.keys(counts).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
     var body = keys.length
       ? keys.map(function (k) {
-          return '<span class="ad-chip"><em>' + esc(labels[k] || k) + "</em><b>" +
-            esc(counts[k]) + "</b></span>";
+          return '<span class="ad-chip"><em>' + esc(kind === "status" ? t("adStatus_" + k) : kind === "priority" ? DC.priLabel(k) : (labels[k] || k)) + "</em><b>" +
+            esc(counts[k] || 0) + "</b></span>";
         }).join("")
       : '<span class="muted">' + esc(t("adNoData")) + "</span>";
-    return '<div class="ad-group"><h4>' + esc(title) + '</h4><div class="ad-chips">' +
+    return '<div class="ad-group' + (kind ? " ad-distribution-" + kind : "") + '"><h4>' + esc(title) + '</h4><div class="ad-chips">' +
       body + "</div></div>";
   }
 
@@ -84,11 +81,11 @@
     (o.by_college || []).forEach(function (c) {
       var key = c.college || "?";
       colCounts[key] = c.count;
-      colLabels[key] = c.label || c.college || t("unitNone");
+      colLabels[key] = DC.collegeLabel(c.college) || c.label || t("unitNone");
     });
     box.innerHTML =
-      breakdownGroup(t("adByStatus"), o.by_status || {}, o.status_labels || {}, STATUS_ORDER) +
-      breakdownGroup(t("adByPriority"), o.by_priority || {}, o.priority_labels || {}, PRIORITY_ORDER) +
+      breakdownGroup(t("adByStatus"), o.by_status || {}, o.status_labels || {}, STATUS_ORDER, "status") +
+      breakdownGroup(t("adByPriority"), o.by_priority || {}, o.priority_labels || {}, PRIORITY_ORDER, "priority") +
       breakdownGroup(t("adByCollege"), colCounts, colLabels, []);
   }
 

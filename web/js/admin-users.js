@@ -90,18 +90,22 @@
         DC.blockOptionsHtml(u.college, u.block) + "</select></div>" +
         "</div>");
     } else {
-      body.push('<div class="tk-row"><span class="lbl2">' + esc(t("adTrade")) +
-        "</span><span>" + esc(u.trade || t("unitNone")) + "</span></div>");
+      body.push('<label class="lbl" for="ad-name-' + esc(u.id) + '">' + esc(t("lblRegName")) + '</label>' +
+        '<input type="text" id="ad-name-' + esc(u.id) + '" maxlength="40" value="' + esc(u.name || "") + '">');
+      if (u.role === "worker") body.push(DC.row(t("adTrade"), esc(u.trade || t("unitNone"))));
       if (u.phone) {
         body.push('<div class="tk-row"><span class="lbl2">' + esc(t("adPhone")) +
           "</span><span>" + esc(u.phone) + "</span></div>");
       }
     }
+    if (u.role === "worker") {
+      body.push(DC.row(t("adWorkerId"), esc(u.worker_id || u.username)));
+      body.push(DC.row(t("adSpecialties"), esc((u.specialty_labels || []).join(DC.lang === "zh" ? "、" : ", ") || t("unitNone"))));
+      body.push(DC.row(t("adCertified"), esc(t(u.certified ? "adCertifiedValue" : "adUncertifiedValue"))));
+    }
     body.push('<div class="ad-actions">' +
-      (isStudent
-        ? '<button type="button" class="btn tiny primary" data-act="save-user" data-id="' +
-          esc(u.id) + '">' + esc(t("adSave")) + "</button>"
-        : "") +
+      '<button type="button" class="btn tiny primary" data-act="save-user" data-id="' +
+      esc(u.id) + '">' + esc(t("adSave")) + "</button>" +
       '<input type="password" id="ad-pass-' + esc(u.id) +
       '" class="ad-pass" maxlength="128" placeholder="' + esc(t("adNewPw")) + '">' +
       '<button type="button" class="btn tiny" data-act="reset-pw" data-id="' +
@@ -110,10 +114,9 @@
 
     return '<details class="ad-item">' +
       "<summary>" +
-      '<span class="who-role ' + esc(u.role) + '">' + esc(DC.roleLabel(u.role)) + "</span>" +
       '<span class="ad-name">' + esc(u.name || u.username) + "</span>" +
       '<code class="who-id">' + esc(u.worker_id || u.username) + "</code>" +
-      '<span class="ad-room">' + roomText(u) + "</span>" +
+      (isStudent ? '<span class="ad-room">' + roomText(u) + "</span>" : "") +
       (meta ? '<span class="ad-meta">' + esc(meta) + "</span>" : "") +
       '<span class="chev" aria-hidden="true">▾</span>' +
       "</summary>" +
@@ -123,11 +126,21 @@
   function renderUsers() {
     var node = $("adUserList");
     if (!node) return;
+    var query = ($("adPeopleSearch").value || "").trim().toLocaleLowerCase();
+    var matched = users.filter(function (u) {
+      return [u.name, u.name_en, u.username, u.worker_id].some(function (value) {
+        return String(value || "").toLocaleLowerCase().indexOf(query) >= 0;
+      });
+    });
     var count = $("adUserCount");
-    if (count) count.textContent = users.length ? fill(t("adUserCount"), { n: users.length }) : "";
-    node.innerHTML = users.length
-      ? users.map(userRow).join("")
-      : '<p class="empty">' + esc(t("adNoData")) + "</p>";
+    if (count) count.textContent = fill(t("adUserCount"), { n: users.length });
+    node.innerHTML = matched.length ? ["admin", "student", "worker"].map(function (role) {
+      var group = matched.filter(function (u) { return u.role === role; });
+      if (!group.length && query) return "";
+      return '<section class="ad-people-group"><h3>' +
+        esc(fill(t("adPeopleGroup"), { role: role === "worker" ? t("adPeopleWorker") : DC.roleLabel(role), n: group.length })) +
+        '</h3><div class="ad-list">' + group.map(userRow).join("") + '</div></section>';
+    }).join("") : '<p class="empty">' + esc(t("adNoPeople")) + '</p>';
   }
 
   /* ====================================================================== */
@@ -320,8 +333,9 @@
   function q(path) { return path + "?lang=" + encodeURIComponent(DC.lang); }
 
   function loadUsers() {
+    var lang = DC.lang;
     return DC.api(q("/api/admin/users")).then(function (res) {
-      if (!res.ok) return;
+      if (lang !== DC.lang || !res.ok) return;
       users = (res.data && res.data.users) || [];
       renderUsers();
     });
@@ -365,6 +379,7 @@
   }
 
   function wire() {
+    on("adPeopleSearch", "input", renderUsers);
     on("adReload", "click", function () { loadUsers(); });
     on("adUserList", "click", onUserListClick);
     on("adUserList", "change", onUserListChange);
@@ -379,6 +394,7 @@
   DC.afterLang(function () {
     renderIdentity();
     renderUsers();
+    if (DC.me) loadUsers();
     if (createMode === "worker") renderSpecs();
     else if (createMode === "student") renderCreateCollege();
     var title = $("adCreateTitle");

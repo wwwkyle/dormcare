@@ -204,12 +204,16 @@
 
   wire();
 
+  // The admin model page owns the shared boot; password handlers above are reused.
+  if (document.getElementById("modelForm")) return;
+
   // No role argument: the password half of this page is valid for every role,
   // and the server refuses the room half for anyone who is not a student. The
   // page therefore requires only that somebody is signed in, and hides the
   // room card from the roles that have no room.
   DC.start(function (user) {
     if (!user) return null;
+    if (user.role === "admin") { window.location.replace("/model.html"); return null; }
     applyRole(user);
     return DC.loadConfig().then(function () {
       if (user.role === "student") fillAccountForm(user);

@@ -82,7 +82,7 @@
     college.innerHTML = DC.collegeOptionsHtml();
     status.innerHTML = STATUS_ORDER.map(function (s) {
       var labels = (overview && overview.status_labels) || {};
-      return option(s, labels[s] || s);
+      return option(s, t("adStatus_" + s));
     }).join("");
     worker.innerHTML = option("", t("tkNoWorker")) + workers.map(function (w) {
       return option(w.id, nameOf(w) + " · " + (w.worker_id || w.id));
@@ -190,21 +190,54 @@
     var keep = sel.value || statusFilter;
     sel.innerHTML = '<option value="">' + esc(t("adFilterAll")) + "</option>" +
       STATUS_ORDER.filter(function (k) { return by[k] !== undefined; }).map(function (k) {
-        return '<option value="' + esc(k) + '">' + esc(labels[k] || k) + "</option>";
+        return '<option value="' + esc(k) + '">' + esc(t("adStatus_" + k)) + "</option>";
       }).join("");
     sel.value = keep || "";
     statusFilter = sel.value || "";
   }
 
+  var PRIORITY_ORDER = ["urgent", "high", "normal", "low"];
+
+  // Only the server's scheduled appointment is a visit, never the availability slots.
+  function appointmentTime(tk, edge) {
+    var time = tk.appointment && tk.appointment[edge];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tk.date || "") ||
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(time || "")) return Infinity;
+    var value = Date.parse(tk.date + "T" + time + ":00");
+    return isFinite(value) ? value : Infinity;
+  }
+
+  function compareValue(a, b) { return a === b ? 0 : (a < b ? -1 : 1); }
+  function rank(order, key) { var i = order.indexOf(key); return i < 0 ? order.length : i; }
+  function compareTickets(a, b) {
+    var createdA = Date.parse(a.created_at), createdB = Date.parse(b.created_at);
+    return compareValue(rank(STATUS_ORDER, a.status), rank(STATUS_ORDER, b.status)) ||
+      compareValue(rank(PRIORITY_ORDER, a.priority), rank(PRIORITY_ORDER, b.priority)) ||
+      compareValue(appointmentTime(a, "start"), appointmentTime(b, "start")) ||
+      compareValue(isFinite(createdA) ? createdA : Infinity, isFinite(createdB) ? createdB : Infinity) ||
+      String(a.id || "").localeCompare(String(b.id || ""));
+  }
+
+  function appointmentText(tk) {
+    return isFinite(appointmentTime(tk, "start")) && isFinite(appointmentTime(tk, "end"))
+      ? DC.dayLabel(tk.date) + " " + tk.appointment.start + "–" + tk.appointment.end
+      : t("adNoAppointment");
+  }
+
+  function reportedText(tk) {
+    var time = new Date(tk.created_at);
+    return tk.created_at && isFinite(time.getTime())
+      ? time.toLocaleString(DC.lang === "zh" ? "zh-CN" : "en-GB", { hour12: false })
+      : t("unitNone");
+  }
+
   function ticketRow(tk) {
     var done = (tk.status === "done" || tk.status === "confirmed");
     var badges =
-      '<span class="pill ' + esc(tk.status || "pending") + '">' + esc(tk.status_label || "") +
-      "</span>" +
-      '<span class="pill ' + esc(tk.priority) + '">' + esc(priLabel(tk.priority)) + "</span>" +
-      '<span class="pill q-' + esc(tk.queue_state || "unassigned") + '">' +
-      esc(tk.queue_label || "") + "</span>" +
-      (tk.public ? '<span class="pill public">' + esc(t("tagPublic")) + "</span>" : "");
+      '<span class="pill ' + esc(tk.status || "pending") + '">' + esc(t("adStatus_" + tk.status)) + '</span>' +
+      '<span class="pill ' + esc(tk.priority) + '">' + esc(priLabel(tk.priority)) + '</span>' +
+      (tk.public ? '<span class="pill public">' + esc(t("tagPublic")) + '</span>' : "");
+    var overdue = !done && appointmentTime(tk, "end") < Date.now();
 
     var where = esc(tk.college_label) +
       (tk.block ? " · " + esc(tk.block) : "") + " · " + esc(tk.dorm);
@@ -215,16 +248,14 @@
       esc(tk.student_name || t("unitNone")) +
       (tk.user_username ? ' <code class="who-id">' + esc(tk.user_username) + "</code>" : "")));
     detail.push(row(t("adContact"), esc(tk.contact || t("unitNone"))));
+    detail.push(row(t("adReportedAt"), esc(reportedText(tk))));
+    detail.push(row(t("adAppointment"), esc(appointmentText(tk))));
     detail.push(row(t("adAssign"), tk.assigned_worker
       ? esc(nameOf(tk.assigned_worker)) +
         (tk.assigned_worker.worker_id
           ? ' <code class="who-id">' + esc(tk.assigned_worker.worker_id) + "</code>" : "")
       : esc(t("tkNoWorker"))));
-    detail.push(row(t("tkAppointment"), tk.appointment
-      ? '<strong class="appt">' + esc(DC.dayLabel(tk.date)) + " " +
-        esc(tk.appointment.start) + "-" + esc(tk.appointment.end) + "</strong>"
-      : esc(t("unitNone"))));
-    detail.push(row(t("tkDate"), esc(DC.dayLabel(tk.date))));
+    detail.push(row(t("adScheduledDate"), esc(DC.dayLabel(tk.date))));
     detail.push(row(t("tkWindow"), esc(pairsText(tk.slots))));
     detail.push(row(t("tkDuration"), esc(tk.duration_minutes) + " " + esc(t("minutes"))));
     if (tk.description) detail.push(row(t("tkDesc"), esc(tk.description)));
@@ -244,13 +275,18 @@
     }
 
     return '<details class="ticket fold-item' + (done ? " done" : "") +
-      '" data-p="' + esc(tk.priority) + '">' +
+      '" data-p="' + esc(tk.priority) + '" data-ticket-id="' + esc(tk.id) + '">' +
       "<summary>" +
-      '<span class="tk-type">' + esc(tk.repair_label) + "</span>" +
-      '<span class="tk-where">' + where + "</span>" +
-      '<span class="tk-when">' + esc(DC.dayLabel(tk.date)) + " · " +
-      esc(pairsText(tk.slots)) + "</span>" +
-      '<span class="tk-badges">' + badges + "</span>" +
+      '<span class="ad-ticket-main"><span class="ad-ticket-title">' +
+      '<span class="tk-type">' + esc(tk.repair_label) + '</span>' +
+      '<span class="tk-badges">' + badges + '</span></span>' +
+      '<span class="ad-ticket-meta"><span class="tk-where">' + where + '</span>' +
+      '<span class="tk-when">' + esc(t("adAppointment")) + ': ' + esc(appointmentText(tk)) + '</span>' +
+      (tk.assigned_worker ? '<span>' + esc(t("adAssign")) + ': ' + esc(nameOf(tk.assigned_worker)) + '</span>' : '') +
+      '<span>' + esc(t("tkWindow")) + ': ' + esc(DC.dayLabel(tk.date)) + ' ' + esc(pairsText(tk.slots)) + '</span>' +
+      (overdue ? '<span class="ad-appointment-passed">' + esc(t("adAppointmentPassed")) + '</span>' : '') +
+      '</span></span><span class="ad-ticket-route pill q-' + esc(tk.queue_state || "unassigned") + '">' +
+      esc(tk.queue_label || "") + '</span>' +
       '<span class="chev" aria-hidden="true">▾</span>' +
       "</summary>" +
       '<div class="tk-body">' + detail.join("") +
@@ -271,12 +307,10 @@
     if (!node) return;
     var list = tickets.filter(function (tk) {
       return !statusFilter || tk.status === statusFilter;
-    });
+    }).sort(compareTickets);
     var count = $("adTicketCount");
     if (count) {
-      count.textContent = list.length
-        ? fill(t("adUserCount"), { n: list.length })
-        : "";
+      count.textContent = fill(t("adTicketTotal"), { n: list.length });
     }
     node.innerHTML = list.length
       ? list.map(ticketRow).join("")
@@ -312,8 +346,9 @@
   }
 
   function loadTickets() {
+    var lang = DC.lang;
     return DC.api(q("/api/admin/tickets")).then(function (res) {
-      if (!res.ok) return;
+      if (lang !== DC.lang || !res.ok) return;
       tickets = (res.data && res.data.tickets) || [];
       renderTickets();
     });
@@ -423,6 +458,7 @@
     renderStatusFilter();
     renderTickets();
     renderEditorOptions();
+    if (DC.me) loadTickets();
   });
 
   wire();

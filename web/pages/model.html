@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title data-i18n="modelPageTitle">模型密钥 · DormCare</title>
+<title data-i18n="adSettingsTitle">系统设置 · DormCare</title>
 <meta name="description" content="DormCare 管理员端 · 填写、修改和重置模型密钥。Model key settings of DormCare.">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-<div class="app narrow">
+<div class="app">
 
   <header class="topbar">
     <div class="brand">
       <div class="mark admin" aria-hidden="true">🧭</div>
       <div class="brand-text">
-        <h1 data-i18n="modelPageTitle">模型密钥 · DormCare</h1>
+        <h1 data-i18n="adSettingsTitle">系统设置 · DormCare</h1>
         <p data-i18n="adminSub">DormCare 运维管理台</p>
       </div>
     </div>
@@ -35,13 +35,13 @@
     <div class="userchip" id="userChip" hidden></div>
   </nav>
 
-<nav class="workspace-nav" data-i18n-aria="navLabel" aria-label="功能导航"><a href="/menu.html" data-i18n="backMenu">主菜单</a><a href="/overview.html" data-i18n="menuAdminOverview"></a><a href="/tickets.html" data-i18n="menuAdminTickets"></a><a href="/users.html" data-i18n="menuAdminUsers"></a><a href="/roster.html" data-i18n="menuAdminRoster"></a><a href="/model.html" aria-current="page" data-i18n="menuAdminModel"></a><a href="/account.html" data-i18n="menuAdminAccount"></a></nav>
+<nav class="workspace-nav" data-i18n-aria="navLabel" aria-label="功能导航"><a href="/menu.html" data-i18n="backMenu">主菜单</a><a href="/overview.html" data-i18n="menuAdminOverview">运行总览</a><a href="/tickets.html" data-i18n="menuAdminTickets">全部工单</a><a href="/users.html" data-i18n="menuAdminPeople">人员管理</a><a href="/model.html" aria-current="page" data-i18n="menuAdminSettings">系统设置</a></nav>
   <main class="stack">
-<div class="page-intro"><p data-i18n="modelIntro"></p></div>
+<div class="page-intro"><p data-i18n="adSettingsIntro"></p></div>
 
     <section class="card">
       <div class="card-head">
-        <h2><span aria-hidden="true">🔐</span> <span data-i18n="modelCardTitle">模型密钥</span></h2>
+        <h2><span aria-hidden="true">🔐</span> <span data-i18n="adAISettings">AI 模型配置</span></h2>
       </div>
       <p class="hint" data-i18n="setupBody"></p>
       <p class="locked-value" id="modelNow"></p>
@@ -81,10 +81,32 @@
       <p class="form-msg" id="setupMsg"></p>
     </section>
 
+    <section class="card">
+        <div class="acc-block" id="adminAccountSecurity">
+          <h2 data-i18n="adAccountSecurity">账号安全</h2>
+          <p class="hint" data-i18n="accPwHint"></p>
+
+          <label class="lbl" for="aPwCur" data-i18n="accCurrentPw">当前密码</label>
+          <input type="password" id="aPwCur" maxlength="128" autocomplete="current-password">
+
+          <label class="lbl" for="aPwNew" data-i18n="accNewPw">新密码</label>
+          <input type="password" id="aPwNew" maxlength="128" autocomplete="new-password">
+
+          <label class="lbl" for="aPwNew2" data-i18n="accNewPw2">确认新密码</label>
+          <input type="password" id="aPwNew2" maxlength="128" autocomplete="new-password">
+
+          <div class="row">
+            <button type="button" class="btn primary" id="accPwSave" data-i18n="accSavePw">修改密码</button>
+          </div>
+          <p class="form-msg" id="accPwMsg"></p>
+        </div>
+    </section>
+
   </main>
 
 </div>
 <script src="/common.js"></script>
+<script src="/account.js"></script>
 <script src="/admin-model.js"></script>
 </body>
 </html>

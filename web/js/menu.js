@@ -35,11 +35,9 @@
     ],
     admin: [
       { icon: "📊", href: "/overview.html", key: "menuAdminOverview", sub: "menuAdminOverviewSub" },
-      { icon: "📋", href: "/tickets.html",  key: "menuAdminTickets",  sub: "menuAdminTicketsSub" },
-      { icon: "👥", href: "/users.html",    key: "menuAdminUsers",    sub: "menuAdminUsersSub" },
-      { icon: "🛠️", href: "/roster.html",  key: "menuAdminRoster",   sub: "menuAdminRosterSub" },
-      { icon: "🔐", href: "/model.html",   key: "menuAdminModel",    sub: "menuAdminModelSub" },
-      { icon: "🔑", href: "/account.html",  key: "menuAdminAccount",  sub: "menuAdminAccountSub" }
+      { icon: "📋", href: "/tickets.html", key: "menuAdminTickets", sub: "menuAdminTicketsSub" },
+      { icon: "👥", href: "/users.html", key: "menuAdminPeople", sub: "menuAdminPeopleSub" },
+      { icon: "🔐", href: "/model.html", key: "menuAdminSettings", sub: "menuAdminSettingsSub" }
     ]
   };
 
@@ -74,6 +72,9 @@
     var grid = $("menuGrid");
     if (!grid) return;
     var items = SECTIONS[DC.me && DC.me.role] || [];
+    var isAdmin = DC.me && DC.me.role === "admin";
+    grid.classList.toggle("admin-menu-grid", !!isAdmin);
+    grid.closest("main").classList.toggle("admin-menu", !!isAdmin);
     grid.innerHTML = items.map(function (it) {
       return '<a class="menu-card" href="' + esc(it.href) + '">' +
         '<span class="menu-icon" aria-hidden="true">' + it.icon + "</span>" +

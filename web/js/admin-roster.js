@@ -98,9 +98,6 @@
   }
 
   DC.start(function () {
-    return DC.loadConfig().then(function () {
-      renderIdentity();
-      return loadRoster();
-    });
+    window.location.replace("/users.html");
   }, "admin");
 })(window.DC);

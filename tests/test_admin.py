@@ -113,7 +113,10 @@ def main():
             ("/api/admin/ticket/delete", {"id": "T00000000"}, "POST"),
             ("/api/admin/audit?limit=5", None, "GET"),
             ("/api/admin/model", None, "GET"),
+            ("/api/admin/dify", None, "GET"),
             ("/api/setup/reset", {}, "POST"),
+            ("/api/dify/setup", {"api_key": "app-x"}, "POST"),
+            ("/api/dify/setup/reset", {}, "POST"),
         ]:
             s, d = anon.call(path, body, method)
             check("anonymous %-28s -> 401" % path, s == 401, "%d %s" % (s, d.get("code")))
@@ -146,7 +149,11 @@ def main():
              {"id": "T00000000", "title": "x"}, "POST"),
             ("student cannot read admin audit", stu, "/api/admin/audit", None, "GET"),
             ("student cannot read the model key", stu, "/api/admin/model", None, "GET"),
+            ("student cannot read Dify settings", stu, "/api/admin/dify", None, "GET"),
+            ("student cannot set the Dify key", stu, "/api/dify/setup",
+             {"api_key": "app-x"}, "POST"),
             ("technician cannot reset the model key", tech, "/api/setup/reset", {}, "POST"),
+            ("technician cannot reset Dify settings", tech, "/api/dify/setup/reset", {}, "POST"),
         ]:
             s, d = client.call(path, body, method)
             check("%s -> 403" % label, s == 403 and d.get("code") == "forbidden",

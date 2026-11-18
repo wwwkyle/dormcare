@@ -163,7 +163,13 @@ function makeNode(tag, id) {
   node.appendChild = (c) => { node._children.push(c); return c; };
   node.querySelector = (sel) => node.querySelectorAll(sel)[0] || null;
   node.querySelectorAll = (sel) => queryAll(node, sel);
-  node.closest = () => null;
+  // menu.js toggles a class on the enclosing <main>. The shim has no parent
+  // tree, so hand back a stable stand-in instead of crashing the whole suite.
+  node.closest = (sel) => {
+    if (sel !== "main") return null;
+    if (!node._mainStub) node._mainStub = makeNode("main");
+    return node._mainStub;
+  };
   node.focus = () => {};
   return node;
 }
@@ -285,6 +291,8 @@ const document = {
   querySelectorAll(sel) { return queryAll(document._root, sel); },
   getElementById(id) { return ALL.find((n) => n.id === id) || null; },
 };
+// common.js adds role classes to <body>; the shim's root already is one.
+document.body = document._root;
 
 /* ------------------------------------------------------ build page from HTML */
 
@@ -305,10 +313,11 @@ function buildPage(html) {
   while ((m = re.exec(html))) {
     const tag = m[1], attrs = m[2], id = m[3];
     const n = makeNode(tag, id);
-    ["data-i18n", "data-i18n-html", "data-i18n-ph", "data-i18n-aria"].forEach((a) => {
-      const am = new RegExp(a + '="([^"]+)"').exec(attrs);
-      if (am) n.setAttribute(a, am[1]);
-    });
+    // Keep every declared attribute, not just the i18n ones: the login checks
+    // read `type` and `maxlength` off the same nodes the page module uses.
+    const attrRe = /([:\w-]+)="([^"]*)"/g;
+    let attr;
+    while ((attr = attrRe.exec(attrs))) n.setAttribute(attr[1], attr[2]);
     // A boolean `hidden` attribute must be honoured, or a panel the markup
     // keeps closed would read as open and the check would be blind to it.
     if (/(?:^|\s)hidden(?:\s|=|$)/.test(attrs)) n.hidden = true;
@@ -446,6 +455,16 @@ async function runRole(page, module, cookie, opts) {
   for (const other of FOREIGN) {
     check(page + " does not carry another section's control #" + other,
       document.getElementById(other) === null, other);
+  }
+
+  if (module === "admin-model.js") {
+    check(page + " offers both Dify fields in the settings page",
+      /type="password"[^>]*id="difyKey"/.test(html) &&
+      /id="difyBase"/.test(html) && /id="difyForm"/.test(html), "");
+    const difyText = txt("difyNow");
+    check(page + " shows the Dify connection status without the key",
+      difyText.length > 0 && !/^dify/.test(difyText) && !/app-/.test(difyText),
+      difyText);
   }
 
   // Every console carries a way back to the one menu. The control is rendered
@@ -970,8 +989,9 @@ async function runLogin() {
       loginTab.getAttribute("aria-selected") === "true");
 
   const demoFold = document.getElementById("demoFold");
-  check("demo accounts are visible every time the page loads",
-    !!demoFold && demoFold.open === true, "open=" + (demoFold && demoFold.open));
+  check("demo accounts are offered in an expandable panel",
+    !!demoFold && demoFold.tagName === "DETAILS",
+    demoFold ? demoFold.tagName : "no panel");
   const demo = document.getElementById("demoBody");
   check("the demo table lists all three roles",
     demo.querySelectorAll("tr").length === 4, "rows=" + demo.querySelectorAll("tr").length);

@@ -6,20 +6,32 @@
 
 当前适配依据为 2026-11-14 导出的 `DormCare Student Assistant (1).ifpkg`：应用模式为 `advanced-chat`，开始节点没有必填变量；文件输入开启，每轮最多 3 张图片；两个 LLM 节点的视觉输入均为 `sys.files`。此次只修改 DormCare 接入代码，没有修改或发布线上 Dify 工作流。
 
-在项目根目录的 `.env:1` 中配置（首次克隆可从 `.env.example:1` 复制）：
+**推荐：在管理员的「系统设置 → Dify 工作流配置」里填写两个字段。** 用管理员账号登录，
+打开 `/model.html`，在 **Dify 工作流配置** 卡片中填入 `Dify API Key` 与
+`Dify API Base URL`，点击保存即可。配置写入数据目录，重启服务后仍然有效；
+页面只显示是否配置、来源与 API 地址，不会再显示完整密钥。只改地址时把密钥留空，
+表示沿用当前密钥。只有管理员能调用 `/api/admin/dify`、`/api/dify/setup` 与
+`/api/dify/setup/reset`，学生和师傅无法读取或修改。
+
+使用 Dify Cloud 时 API 根地址通常是 `https://api.dify.ai/v1`；以应用控制台显示的地址为准。
+服务端自动追加 `/chat-messages`，不要填写分享页地址或重复填写 `/chat-messages`。
+自部署实例使用自己的 HTTPS API 根地址。本地测试允许 `localhost`、`127.0.0.1` 或 `::1`
+的 HTTP 地址；请求不跟随重定向，避免将密钥发送到其他地址。非本地地址必须是 HTTPS，
+且不能带账号密码、查询串或片段。
+
+启动后，用学生账号进入原有的「我要报修」页面即可，无需嵌入另一个聊天窗口，也不需要在浏览器中配置密钥。
+
+**兼容旧部署：`.env` 仍然可作为回退。** 首次克隆可从 `.env.example:1` 复制，或继续用
+`docker run --env-file .env ...` 注入：
 
 ```dotenv
 DIFY_API_KEY=app-替换为该应用的API密钥
 DIFY_API_BASE_URL=https://api.dify.ai/v1
 ```
 
-保存后运行 `python3 app.py`，无需再执行 `export`。
+程序启动时会加载与 `app.py:1` 同目录的 `.env:1`，不依赖当前工作目录；已存在的进程环境变量优先，不会被文件覆盖。支持单行 `KEY=VALUE`、单/双引号、注释和可选的 `export` 前缀，不执行 shell 命令或变量展开。修改 `.env` 后需重启服务；页面保存的值优先于环境变量，无需重启即可生效。
 
-使用 Dify Cloud 时通常使用上述 API 根地址；以应用控制台显示的地址为准。服务端自动追加 `/chat-messages`，不要填写分享页地址或重复填写 `/chat-messages`。自部署实例使用自己的 HTTPS API 根地址。本地测试允许 `localhost`、`127.0.0.1` 或 `::1` 的 HTTP 地址；请求不跟随重定向，避免将密钥发送到其他地址。
-
-启动后，用学生账号进入原有的「我要报修」页面即可，无需嵌入另一个聊天窗口，也不需要在浏览器中配置密钥。程序在读取配置前自动加载与 `app.py:1` 同目录的 `.env:1`，不依赖当前工作目录；已存在的进程环境变量优先，不会被文件覆盖。支持单行 `KEY=VALUE`、单/双引号、注释和可选的 `export` 前缀，不执行 shell 命令或变量展开。修改文件后需重启服务。
-
-`.env:1` 和其他 `.env.*` 本地配置已被 Git 与 Docker 构建上下文忽略，避免提交密钥或打包进镜像；仅无密钥的 `.env.example:1` 可提交。Docker 部署可通过 `docker run --env-file .env ...` 注入同一份配置。
+`.env:1` 和其他 `.env.*` 本地配置已被 Git 与 Docker 构建上下文忽略，避免提交密钥或打包进镜像；仅无密钥的 `.env.example:1` 可提交。Docker 部署时请挂载 `/data` 卷，页面保存的配置才会随卷持久化。
 
 接入链路：
 
@@ -40,13 +52,13 @@ DIFY_API_BASE_URL=https://api.dify.ai/v1
 
 | 变量 | 用途 |
 | --- | --- |
-| `DIFY_API_KEY` | DormCare 调用 Dify 的应用密钥；非空时优先使用 Dify 处理学生 AI 对话 |
-| `DIFY_API_BASE_URL` | API 根地址，默认 `https://api.dify.ai/v1` |
+| `DIFY_API_KEY` | DormCare 调用 Dify 的应用密钥；**回退值**，管理员在系统设置页保存后以页面值为准。非空时优先使用 Dify 处理学生 AI 对话 |
+| `DIFY_API_BASE_URL` | API 根地址的**回退值**，默认 `https://api.dify.ai/v1`；同样可被系统设置页覆盖 |
 | `DIFY_TIMEOUT_SECONDS` | 请求超时秒数，默认 120，范围大于 0 且不超过 300 |
 | `DIFY_INPUTS_JSON` | JSON 对象，补充工作流开始节点的自定义输入变量，默认 `{}` |
 | `DORMCARE_DIFY_API_KEY` | **反向调用**密钥，仅用于 Dify 调用 DormCare 的 `/api/dify/workflow`；不是 Dify 应用密钥 |
 
-两个方向的密钥不可混用。密钥只放服务端环境中，不放前端、Git 或分享链接中。未配置 `DIFY_API_KEY` 时，原有模型 / 规则逻辑保持不变。`/api/health` 的 `dify_enabled` 仅表示已配置密钥，不代表已通过远端连通性校验。
+两个方向的密钥不可混用。密钥只放服务端（环境变量或系统设置页），不放前端、Git 或分享链接中。系统设置页不会把已保存的密钥回传给浏览器，重新打开页面时密钥输入框始终为空。未配置 Dify 密钥时，原有模型 / 规则逻辑保持不变。`/api/health` 的 `dify_enabled` 仅表示已配置密钥，不代表已通过远端连通性校验。
 
 ### 工作流输入和输出
 

@@ -9,9 +9,11 @@ runs on the Python standard library so it deploys anywhere without an install
 step.
 
 Collections: `tickets`, `workers`, `plans`, `users`, `sessions`, `uploads`,
-`agent_sessions`, `admin_audit`. Accounts and
+`agent_sessions`, `admin_audit`, and `settings`. Accounts and
 sessions share the file so a restart keeps everyone signed in; passwords are
-stored as PBKDF2 digests (see auth.py), never in clear text.
+stored as PBKDF2 digests (see auth.py), never in clear text. `settings` holds
+operator-entered integration values (currently the Dify credentials), which
+survive a restart just like the accounts do.
 
 Concurrency: a single process-wide lock guards every read-modify-write, which
 is sufficient for a ThreadingHTTPServer and keeps the file always-valid JSON.
@@ -49,10 +51,14 @@ class Store:
                 self._data = {"tickets": [], "workers": [], "plans": [],
                               "users": [], "sessions": [], "uploads": [],
                               "agent_sessions": [], "agent_events": [],
-                              "admin_audit": []}
+                              "admin_audit": [], "settings": {}}
             for key in ("tickets", "workers", "plans", "users", "sessions",
                         "uploads", "agent_sessions", "agent_events", "admin_audit"):
                 self._data.setdefault(key, [])
+            # Older store files predate operator-managed settings; treat a
+            # malformed one as empty rather than letting it break every read.
+            if not isinstance(self._data.get("settings"), dict):
+                self._data["settings"] = {}
             return self._data
 
     def save(self):
@@ -61,6 +67,25 @@ class Store:
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(self._data, fh, ensure_ascii=False, indent=2)
             os.replace(tmp, self.path)
+
+    # ---- operator settings ------------------------------------------------ #
+
+    def settings(self):
+        """A copy of the settings tree, so callers cannot mutate the store."""
+        with _lock:
+            value = self._data.get("settings")
+            return dict(value) if isinstance(value, dict) else {}
+
+    def update_settings(self, section, patch):
+        """Merge one settings section and persist it atomically."""
+        with _lock:
+            settings = self._data.setdefault("settings", {})
+            current = settings.get(section)
+            current = dict(current) if isinstance(current, dict) else {}
+            current.update(patch)
+            settings[section] = current
+            self.save()
+            return dict(current)
 
     # ---- tickets --------------------------------------------------------- #
 

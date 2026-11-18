@@ -76,6 +76,7 @@ load_env(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 import ai_agents
 import auth
 import dify_client
+import dify_config
 import dify_integration
 import intake_agent
 from ai_agents import (AIError, DEFAULT_MODEL, MSG_NOT_IN_KB, MSG_OUT_OF_SCOPE,
@@ -202,6 +203,10 @@ RETIRED_PAGES = ("/index.html", "/worker.html", "/admin.html")
 ENTRY_PATHS = {"/", "/index", "/index.htm", "/menu", "/menu.htm"}
 
 STORE = Store(DATA_FILE)
+# Dify credentials entered on the system-settings page are read by the outbound
+# client through dify_config. Bind the store before serving any request so a
+# restart keeps the operator's values instead of falling back to .env.
+dify_config.bind(STORE)
 
 # 预置师傅 / seeded technicians — each carries the repair domains they cover.
 SEED_WORKERS = [
@@ -1064,6 +1069,11 @@ def model_status():
     }
 
 
+def dify_status():
+    """What an administrator may see about the Dify connection. Never the key."""
+    return dify_config.status()
+
+
 # --------------------------------------------------------------------------- #
 # HTTP handler
 # --------------------------------------------------------------------------- #
@@ -1327,6 +1337,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, model_status())
             return
 
+        if path == "/api/admin/dify":
+            user = self._require(ROLE_ADMIN)
+            if not user:
+                return
+            self._json(200, dify_status())
+            return
+
         if path == "/api/admin/tickets":
             user = self._require(ROLE_ADMIN)
             if not user:
@@ -1504,6 +1521,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/auth/register": self._api_register,
             "/api/setup": self._api_setup,
             "/api/setup/reset": self._api_setup_reset,
+            "/api/dify/setup": self._api_dify_setup,
+            "/api/dify/setup/reset": self._api_dify_setup_reset,
             # ---- self-service: nobody has to wait for the administrator ---- #
             "/api/account/room": self._api_account_room,
             "/api/account/phone": self._api_account_phone,
@@ -1879,6 +1898,40 @@ class Handler(BaseHTTPRequestHandler):
                          or DEFAULT_MODEL).strip()
         clear_api_base()
         self._json(200, {"ok": True, "code": "setup_reset", "status": model_status()})
+
+    def _api_dify_setup(self, body, ip):
+        """Enrol the two Dify fields from the system-settings page.
+
+        The key is never sent back to the browser. Leaving it blank keeps the
+        current one, so an operator can correct just the API address without
+        having to paste the secret again.
+        """
+        if not self._require(ROLE_ADMIN):
+            return
+        raw_key = body.get("api_key")
+        candidate = raw_key.strip() if isinstance(raw_key, str) else ""
+        if not candidate:
+            candidate = dify_config.key()
+            if not candidate:
+                self._err(400, "dify_missing_key", "Please enter a Dify API key.")
+                return
+        status, error = dify_config.configure(candidate, body.get("base_url"))
+        if error:
+            messages = {
+                "dify_missing_key": "Please enter a Dify API key.",
+                "dify_bad_key": "That does not look like a Dify API key.",
+                "dify_bad_base": "The API address must be an https URL with no embedded credentials.",
+            }
+            self._err(400, error, messages.get(error, "Invalid Dify settings."))
+            return
+        self._json(200, {"ok": True, "code": "dify_setup_ok", "status": status})
+
+    def _api_dify_setup_reset(self, body, ip):
+        """Drop page-entered Dify values. An old .env value still applies."""
+        if not self._require(ROLE_ADMIN):
+            return
+        self._json(200, {"ok": True, "code": "dify_reset",
+                         "status": dify_config.reset()})
 
     # ---- student: AI intake ---------------------------------------------- #
 

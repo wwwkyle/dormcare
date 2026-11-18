@@ -1,8 +1,9 @@
-/* DormCare · 模型密钥 — enroll, replace, and reset the model key
+/* DormCare · 系统设置 — model key and Dify workflow credentials
  *
- * One menu card, one page. The key stays in server memory. This page is the
- * only place an administrator fills it in, changes the provider or model, or
- * clears it. A key that arrived from the environment cannot be touched here.
+ * One menu card, one page. The model key stays in server memory, while the two
+ * Dify fields are persisted so a redeployment needs no .env edit. This is the
+ * only place an administrator fills in either set of values. Neither secret is
+ * ever sent back to the browser after it has been saved.
  *
  * Depends on common.js (window.DC) loaded first.
  */
@@ -11,6 +12,7 @@
 
   var t = DC.t, esc = DC.esc, fill = DC.fill;
   var status = null;
+  var dify = null;
 
   var PROVIDER_KEY = {
     openrouter: "providerOpenrouter",
@@ -136,6 +138,100 @@
     });
   }
 
+  function difySourceLabel(source) {
+    return t(source === "saved" ? "difySourceSaved" : "difySourceEnv");
+  }
+
+  function renderDify() {
+    var now = $("difyNow");
+    var key = $("difyKey");
+    var reset = $("difyReset");
+    var s = dify || {};
+    if (key) key.placeholder = s.configured ? t("difyKeyKeep") : t("difyKeyPh");
+    if (reset) reset.disabled = !s.source;
+    if (!now) return;
+    if (!s.configured) {
+      now.textContent = t("difyStatusNone");
+      return;
+    }
+    now.textContent = fill(t("difyStatusOn"), {
+      source: difySourceLabel(s.source || "env"),
+      base: s.base_url || "—"
+    });
+    if (s.source === "env") now.textContent += " " + t("difyStatusEnv");
+  }
+
+  function applyDifyStatus(next) {
+    dify = next || {};
+    // Never echo the key; only the address is safe to prefill. A field the
+    // operator is typing in is left alone so a language switch cannot wipe it.
+    var base = $("difyBase");
+    if (base && document.activeElement !== base) base.value = dify.base_url || "";
+    renderDify();
+    DC.refreshHealth();
+  }
+
+  function loadDify() {
+    return DC.api("/api/admin/dify").then(function (res) {
+      if (!res.ok) {
+        showError($("difyMsg"), res.data);
+        return;
+      }
+      applyDifyStatus(res.data);
+    });
+  }
+
+  function onDifySave(e) {
+    e.preventDefault();
+    var btn = $("difySave");
+    var msg = $("difyMsg");
+    var key = $("difyKey");
+    var base = $("difyBase");
+    DC.busy(btn, true);
+    msg.textContent = t("setupWorking");
+    DC.post("/api/dify/setup", {
+      api_key: key ? key.value : "",
+      base_url: base ? base.value : ""
+    }).then(function (res) {
+      if (key) key.value = "";
+      DC.busy(btn, false);
+      var code = (res.data && res.data.code) || "";
+      if (res.ok && res.data && res.data.ok) {
+        DC.setMsg(msg, code || "dify_setup_ok", "ok");
+        applyDifyStatus(res.data.status || dify);
+      } else {
+        showError(msg, res.data);
+      }
+    }).catch(function () {
+      if (key) key.value = "";
+      DC.busy(btn, false);
+      DC.setMsg(msg, "difyNetErr", "err");
+    });
+  }
+
+  function onDifyReset() {
+    var ask = t("difyResetAsk");
+    if (typeof window.confirm === "function" && !window.confirm(ask)) return;
+    var btn = $("difyReset");
+    var msg = $("difyMsg");
+    DC.busy(btn, true);
+    DC.post("/api/dify/setup/reset", {}).then(function (res) {
+      DC.busy(btn, false);
+      var code = (res.data && res.data.code) || "";
+      if (res.ok && res.data && res.data.ok) {
+        var key = $("difyKey");
+        if (key) key.value = "";
+        DC.setMsg(msg, code || "dify_reset", "ok");
+        applyDifyStatus(res.data.status || { configured: false, source: "" });
+      } else {
+        showError(msg, res.data);
+      }
+    }).catch(function () {
+      DC.busy(btn, false);
+      DC.setMsg(msg, "difyNetErr", "err");
+    });
+  }
+
   function showError(msg, data) {
     var code = data && data.code;
     if (code && t(code) !== code) DC.setMsg(msg, code, "err");
@@ -208,14 +304,19 @@
   if (provider) provider.addEventListener("change", syncProvider);
   var reset = $("modelReset");
   if (reset) reset.addEventListener("click", onReset);
+  var difyForm = $("difyForm");
+  if (difyForm) difyForm.addEventListener("submit", onDifySave);
+  var difyReset = $("difyReset");
+  if (difyReset) difyReset.addEventListener("click", onDifyReset);
 
   DC.afterLang(function () {
     renderIdentity();
     render();
+    renderDify();
   });
 
   DC.start(function () {
     renderIdentity();
-    return load();
+    return Promise.all([load(), loadDify()]);
   }, "admin");
 })(window.DC);

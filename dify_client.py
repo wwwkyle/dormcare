@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
+import dify_config
 from upload_service import MAGIC, MAX_IMAGE_BYTES
 
 MAX_IMAGES = 3
@@ -23,7 +24,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def enabled():
-    return bool(os.environ.get("DIFY_API_KEY", "").strip())
+    return dify_config.enabled()
 
 
 def action_text(action, lang="zh"):
@@ -114,8 +115,8 @@ def _image_files(session, user, store, upload_dir, base, key, timeout):
 
 def chat(session, user, lang="zh", force_draft=False, advice_mode=False, store=None, upload_dir=""):
     """Send a blocking chat turn; never expose credentials in returned errors."""
-    key = os.environ.get("DIFY_API_KEY", "").strip()
-    base = os.environ.get("DIFY_API_BASE_URL", "https://api.dify.ai/v1").strip().rstrip("/")
+    key = dify_config.key()
+    base = dify_config.base_url()
     try:
         address = urlsplit(base)
         local = address.hostname in ("localhost", "127.0.0.1", "::1")

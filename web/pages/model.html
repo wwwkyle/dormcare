@@ -82,6 +82,30 @@
     </section>
 
     <section class="card">
+      <div class="card-head">
+        <h2><span aria-hidden="true">🔗</span> <span data-i18n="adDifyTitle">Dify 工作流配置</span></h2>
+      </div>
+      <p class="hint" data-i18n="adDifyIntro"></p>
+      <p class="locked-value" id="difyNow"></p>
+
+      <form id="difyForm" autocomplete="off">
+        <label class="lbl" for="difyBase" data-i18n="difyBaseLabel">Dify API Base URL</label>
+        <input type="url" id="difyBase" maxlength="300" autocomplete="off" spellcheck="false"
+               data-i18n-ph="difyBasePh">
+
+        <label class="lbl" for="difyKey" data-i18n="difyKeyLabel">Dify API Key</label>
+        <input type="password" id="difyKey" maxlength="400" autocomplete="off" spellcheck="false"
+               data-i18n-ph="difyKeyPh">
+
+        <div class="row">
+          <button type="submit" class="btn primary" id="difySave" data-i18n="difySave">保存 Dify 配置</button>
+          <button type="button" class="btn danger" id="difyReset" data-i18n="difyReset">清除页面配置</button>
+        </div>
+      </form>
+      <p class="form-msg" id="difyMsg"></p>
+    </section>
+
+    <section class="card">
         <div class="acc-block" id="adminAccountSecurity">
           <h2 data-i18n="adAccountSecurity">账号安全</h2>
           <p class="hint" data-i18n="accPwHint"></p>

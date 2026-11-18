@@ -15,16 +15,22 @@ python app.py --api-key sk-or-v1-xxxxxxxx        # 或直接传入密钥
 export OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx      # OpenRouter；也可用 OPENAI_API_KEY + OPENAI_BASE_URL
 ```
 
-学生 AI 受理也可接入已发布的 Dify 聊天工作流，保留现有报修表单和确认 / 排班逻辑：
+学生 AI 受理也可接入已发布的 Dify 聊天工作流，保留现有报修表单和确认 / 排班逻辑。
 
-在项目根目录的 `.env:1` 填入该应用的 API Key（首次克隆可从 `.env.example:1` 复制）：
+**这两个字段现在在管理员界面填写**：登录后进入「系统设置 → Dify 工作流配置」，填入
+`Dify API Key` 和 `Dify API Base URL` 并保存即可，不需修改 `.env`、不需重启服务。
+配置存进数据目录（`dormcare-data` 卷内），重启后仍然生效；页面不会再显示完整密钥，
+留空密钥保存表示沿用当前值。只有管理员能读写，学生和师傅无法访问。
+
+旧部署的 `.env:1` 写法仍然兼容，作为**回退**：没有页面配置时才使用；页面保存的值优先。
+已有环境变量时页面会标注来源，保存一次即可改为页面管理。
 
 ```dotenv
 DIFY_API_KEY=app-替换为应用API密钥
 DIFY_API_BASE_URL=https://api.dify.ai/v1
 ```
 
-然后运行 `python3 app.py`。启动时自动读取项目根目录的 `.env:1`，已有系统环境变量优先；该文件已被 Git 忽略，不会提交到 GitHub。
+服务端启动时仍会读取项目根目录的 `.env:1`，该文件已被 Git 忽略，不会提交到 GitHub。
 
 聊天分享链接不是 API 地址，需从对应应用控制台获取密钥。自定义工作流变量、双向接口密钥和验证步骤见 `docs/dify-integration.md:1`。
 
@@ -465,6 +471,9 @@ shift 08:30 at workshop
 | GET | `/api/workers` | 学生 / 师傅 / 管理员 | 师傅列表（姓名 / 工种 / 工号；分机号只给师傅与管理员看） |
 | GET | `/api/plan?date=&lang=` | 师傅 | 自己当天的路线（`worker` 参数会被忽略） |
 | POST | `/api/setup` | 登录 | 一次性登记模型密钥 |
+| GET | `/api/admin/dify` | 管理员 | 查看 Dify 配置状态（是否配置、来源、API 地址），**不含密钥** |
+| POST | `/api/dify/setup` | 管理员 | 登记 / 更新 Dify 的 `api_key` 与 `base_url`；密钥不回传，留空则沿用当前密钥 |
+| POST | `/api/dify/setup/reset` | 管理员 | 清除页面登记的 Dify 配置；`.env` / 环境变量的值会重新生效 |
 | POST | `/api/intake/parse` | 学生 | **AI 受理**：自然语言 → 类别 + 紧急度，外加 **追问**（`need_more_info` / `follow_up`）或 **自检建议**（`self_help`）。**不返回工时** |
 | POST | `/api/intake/advice` | 学生 | **AI 学生建议**：安全提示 + 上门前可以自己做的事 |
 | POST | `/api/tickets` | 学生 | 提交工单。地址（`college`/`block`/`dorm`）**由会话账号写入，请求体里的一律忽略**；唯一例外是 `public_area: true`（公共区域报修），此时才允许指定另一处地址 |
@@ -596,6 +605,8 @@ python tests/test_auth.py          # 权限边界 + 地址归属
 python tests/test_admin.py         # 管理员端
 python tests/test_account.py       # 主菜单 + 自助账号
 python tests/test_multimodal.py    # 上传、完工凭证、AI 受理
+python tests/test_dify.py          # Dify 客户端、会话与回调接口
+python tests/test_dify_settings.py # 系统设置里的 Dify 配置：权限 / 校验 / 持久化
 python tests/smoke_test.py         # 接口 + 规则不变量 + 页面放行
 node tests/dom_smoke.js            # 前端 DOM 行为（需本地服务运行）
 python tests/edge_cases.py         # 双语 AI、降级与边界情况

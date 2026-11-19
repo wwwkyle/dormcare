@@ -17,13 +17,15 @@
 
   function $(id) { return document.getElementById(id); }
 
+  /* The operator account is deliberately NOT listed here. Student and
+   * technician logins are public demo data; an administrator login is not
+   * something every visitor of the sign-in page should be handed. */
   var DEMO = [
     { role: "student", account: "2024001", password: "dorm2026",
       college: "shaw", block: "东座 1 栋", dorm: "A-301" },
     { role: "student", account: "2024002", password: "dorm2026",
       college: "diligentia", block: "A 座", dorm: "F-303" },
-    { role: "worker",  account: "A01 / B02 / C03", password: "fix2026" },
-    { role: "admin",   account: "admin", password: "admin2026" }
+    { role: "worker",  account: "A01 / B02 / C03", password: "fix2026" }
   ];
 
   /* ====================================================================== */

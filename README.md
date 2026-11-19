@@ -75,7 +75,10 @@ docker run -p 3000:3000 -v dormcare-data:/data \
 | 🎓 学生 | `2024002` | `dorm2026` | 学勤书院 · A 座 · F-303 | 同上 |
 | 🎓 学生 | `2024003` … `2024010` | `dorm2026` | 每个账号一间房，见 `app.SEED_USERS` | 同上 |
 | 🛠️ 师傅 | `A01` · `B02` · `C03` | `fix2026` | — | 排班与派活 → `/plan.html`<br>我的工单 → `/jobs.html`<br>账号设置 → `/account.html` |
-| 🧭 管理员 | `admin` | `admin2026` | — | 运行总览 → `/overview.html`<br>全部工单 → `/tickets.html`<br>账号管理 → `/users.html`<br>维修班组 → `/roster.html`<br>账号设置 → `/account.html` |
+
+管理员账号**不在登录页演示账号表里公开**。部署时用环境变量
+`DORMCARE_ADMIN_PASSWORD` 设置管理员口令并自行保管；未设置时只有一个本地演示默认值，
+生产环境务必覆盖。
 
 **一张卡片 = 一个页面 = 一件事。** 以前三种角色各是一个长页面，学生端把报修表单、
 报修记录、账号设置堆在一起。现在 11 个页面各管一件事，页面上**不会出现别的区块**——

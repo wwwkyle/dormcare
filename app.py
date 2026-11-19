@@ -236,7 +236,11 @@ SEED_WORKERS = [
 # — that is precisely what the account-bound address is there to prevent.
 DEMO_STUDENT_PASSWORD = "dorm2026"
 DEMO_WORKER_PASSWORD = "fix2026"
-DEMO_ADMIN_PASSWORD = "admin2026"
+# The administrator is an operator, not a demo account: its password can be
+# supplied by the deployment instead of being fixed in the source. The fallback
+# exists only so a fresh local checkout still has a usable demo operator.
+DEMO_ADMIN_PASSWORD = (os.environ.get("DORMCARE_ADMIN_PASSWORD", "").strip()
+                       or "admin2026")
 
 SEED_USERS = [
     {"role": ROLE_STUDENT, "username": "2024001", "name": "王小明", "name_en": "Wang Xiaoming",

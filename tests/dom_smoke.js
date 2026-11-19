@@ -993,9 +993,10 @@ async function runLogin() {
     !!demoFold && demoFold.tagName === "DETAILS",
     demoFold ? demoFold.tagName : "no panel");
   const demo = document.getElementById("demoBody");
-  check("the demo table lists all three roles",
-    demo.querySelectorAll("tr").length === 4, "rows=" + demo.querySelectorAll("tr").length);
-  check("...including the administrator account", /admin2026/.test(demo.innerHTML),
+  check("the demo table lists only student and technician accounts",
+    demo.querySelectorAll("tr").length === 3, "rows=" + demo.querySelectorAll("tr").length);
+  check("...never exposes the administrator account",
+    !/admin2026|admin2026|管理员|Administrator/.test(demo.innerHTML),
     demo.innerHTML.slice(0, 110));
 
   const colOpts = (document.getElementById("regCollege").innerHTML.match(/<option/g) || []).length;

@@ -386,6 +386,18 @@ def main():
             if body[0] != 200:
                 errors.append("static %s -> %d" % (path, body[0]))
 
+        # The sign-in page is public, so anything in its JS is public too.
+        # The operator account must never be part of that demo table.
+        for path in ("/login.html", "/login.js", "/common.js"):
+            _status, payload = anon.call(path)
+            raw = payload.get("raw", "") if isinstance(payload, dict) else ""
+            leaked = [s for s in ("admin2026", "admin2026", 'role: "admin"')
+                      if s in raw]
+            print(("PASS" if not leaked else "FAIL") +
+                  "  no administrator credentials in %-12s" % path)
+            if leaked:
+                errors.append("%s exposes %s" % (path, ", ".join(leaked)))
+
         # --- the third console reads the whole board ---
         s, ov = ADMIN.call("/api/admin/overview")
         ok = (s == 200 and ov["totals"]["students"] == 10

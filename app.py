@@ -55,6 +55,7 @@ Security
 Runtime: Python standard library only. No pip install required.
 """
 
+import base64
 import hashlib
 import json
 import os
@@ -74,6 +75,8 @@ from env_config import load_env
 load_env(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 import ai_agents
+import asr_client
+import asr_config
 import auth
 import dify_client
 import dify_config
@@ -207,6 +210,7 @@ STORE = Store(DATA_FILE)
 # client through dify_config. Bind the store before serving any request so a
 # restart keeps the operator's values instead of falling back to .env.
 dify_config.bind(STORE)
+asr_config.bind(STORE)
 
 # 预置师傅 / seeded technicians — each carries the repair domains they cover.
 SEED_WORKERS = [
@@ -1078,6 +1082,11 @@ def dify_status():
     return dify_config.status()
 
 
+def asr_status():
+    """What an administrator may see about DeepSeek ASR. Never the key."""
+    return asr_config.status()
+
+
 # --------------------------------------------------------------------------- #
 # HTTP handler
 # --------------------------------------------------------------------------- #
@@ -1222,6 +1231,7 @@ class Handler(BaseHTTPRequestHandler):
                 "model": self.model,
                 "key_configured": bool(self.api_key),
                 "dify_enabled": dify_client.enabled(),
+                "asr_enabled": asr_config.enabled(),
                 "enrollable": (self.key_source != "env" and not self.api_key
                                and bool(self.user) and self.user.get("role") == ROLE_ADMIN),
                 "provider": self.provider or "",
@@ -1254,6 +1264,8 @@ class Handler(BaseHTTPRequestHandler):
                 "priorities": PRIORITY_LEVELS,
                 "slot_minutes": SLOT_MINUTES,
                 "agent_image_limit": dify_client.MAX_IMAGES if dify_client.enabled() else MAX_IMAGES,
+                "asr_enabled": asr_config.enabled(),
+                "asr_max_seconds": asr_client.MAX_AUDIO_SECONDS,
                 "days": [d.isoformat() for d in
                          next_workdays(date.today(), TRAVEL_RULES["scheduling_days"])],
             })
@@ -1346,6 +1358,13 @@ class Handler(BaseHTTPRequestHandler):
             if not user:
                 return
             self._json(200, dify_status())
+            return
+
+        if path == "/api/admin/asr":
+            user = self._require(ROLE_ADMIN)
+            if not user:
+                return
+            self._json(200, asr_status())
             return
 
         if path == "/api/admin/tickets":
@@ -1527,6 +1546,9 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup/reset": self._api_setup_reset,
             "/api/dify/setup": self._api_dify_setup,
             "/api/dify/setup/reset": self._api_dify_setup_reset,
+            "/api/asr/setup": self._api_asr_setup,
+            "/api/asr/setup/reset": self._api_asr_setup_reset,
+            "/api/asr/transcribe": self._api_asr_transcribe,
             # ---- self-service: nobody has to wait for the administrator ---- #
             "/api/account/room": self._api_account_room,
             "/api/account/phone": self._api_account_phone,
@@ -1936,6 +1958,75 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._json(200, {"ok": True, "code": "dify_reset",
                          "status": dify_config.reset()})
+
+    def _api_asr_setup(self, body, ip):
+        """Enrol the DeepSeek ASR key from the system-settings page."""
+        if not self._require(ROLE_ADMIN):
+            return
+        raw_key = body.get("api_key")
+        candidate = raw_key.strip() if isinstance(raw_key, str) else ""
+        if not candidate:
+            candidate = asr_config.key()
+            if not candidate:
+                self._err(400, "asr_missing_key", "Please enter a DeepSeek API key.")
+                return
+        state, error = asr_config.configure(candidate)
+        if error:
+            messages = {"asr_missing_key": "Please enter a DeepSeek API key.",
+                        "asr_bad_key": "That does not look like a DeepSeek API key."}
+            self._err(400, error, messages.get(error, "Invalid ASR settings."))
+            return
+        self._json(200, {"ok": True, "code": "asr_setup_ok", "status": state})
+
+    def _api_asr_setup_reset(self, body, ip):
+        """Drop only the page-entered ASR key. An environment key still applies."""
+        if not self._require(ROLE_ADMIN):
+            return
+        self._json(200, {"ok": True, "code": "asr_reset",
+                         "status": asr_config.reset()})
+
+    def _api_asr_transcribe(self, body, ip):
+        """Transcribe one short WAV clip for the signed-in student."""
+        if not self._require(ROLE_STUDENT):
+            return
+        encoded = body.get("audio")
+        if not isinstance(encoded, str) or not encoded.strip():
+            self._err(400, "asr_bad_audio", "No audio was received.")
+            return
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            self._err(400, "asr_bad_audio", "The audio data is malformed.")
+            return
+        if len(raw) > asr_client.MAX_AUDIO_BYTES:
+            self._err(400, "asr_too_large", "The audio file is too large.")
+            return
+        try:
+            result = asr_client.transcribe(raw)
+        except asr_client.ASRError as exc:
+            raw_code = str(exc)
+            messages = {
+                "not_configured": "DeepSeek speech recognition is not configured.",
+                "bad_audio": "The recording must be 16-bit PCM WAV.",
+                "too_large": "The audio file is too large.",
+                "too_long": "A recording may not exceed 60 seconds.",
+                "unauthorized": "DeepSeek rejected the API key.",
+                "rate_limited": "Too many transcription requests. Try again shortly.",
+                "service_busy": "DeepSeek is busy. Try again shortly.",
+                "invalid_configuration": "The ASR endpoint is invalid.",
+                "failed": "Speech recognition failed. Please type instead.",
+            }
+            statuses = {"rate_limited": 429, "service_busy": 503,
+                        "unauthorized": 502, "failed": 502}
+            # Client-side error codes are i18n keys, so keep the asr_ prefix.
+            code = raw_code if raw_code.startswith("asr_") else "asr_" + raw_code
+            if code == "asr_invalid_configuration":
+                code = "asr_failed"
+            self._err(statuses.get(raw_code, 400), code,
+                      messages.get(raw_code, "Speech recognition failed."))
+            return
+        self._json(200, {"ok": True, "text": result["text"],
+                         "duration_ms": result["duration_ms"]})
 
     # ---- student: AI intake ---------------------------------------------- #
 

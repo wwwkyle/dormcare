@@ -1,8 +1,8 @@
-/* DormCare · 系统设置 — model key and Dify workflow credentials
+/* DormCare · 系统设置 — model key, Dify credentials and DeepSeek ASR
  *
- * One menu card, one page. The model key stays in server memory, while the two
- * Dify fields are persisted so a redeployment needs no .env edit. This is the
- * only place an administrator fills in either set of values. Neither secret is
+ * One menu card, one page. The model key stays in server memory, while the
+ * Dify and ASR credentials are persisted so a redeployment needs no .env edit.
+ * This is the only place an administrator fills in these values. No secret is
  * ever sent back to the browser after it has been saved.
  *
  * Depends on common.js (window.DC) loaded first.
@@ -13,6 +13,7 @@
   var t = DC.t, esc = DC.esc, fill = DC.fill;
   var status = null;
   var dify = null;
+  var asr = null;
 
   var PROVIDER_KEY = {
     openrouter: "providerOpenrouter",
@@ -232,6 +233,86 @@
     });
   }
 
+  function renderAsr() {
+    var now = $("asrNow");
+    var key = $("asrKey");
+    var reset = $("asrReset");
+    var s = asr || {};
+    if (key) key.placeholder = s.configured ? t("asrKeyKeep") : t("asrKeyPh");
+    if (reset) reset.disabled = !s.source;
+    if (!now) return;
+    if (!s.configured) {
+      now.textContent = t("asrStatusNone");
+      return;
+    }
+    now.textContent = fill(t("asrStatusOn"), {
+      source: t(s.source === "saved" ? "asrSourceSaved" : "asrSourceEnv")
+    });
+    if (s.source === "env") now.textContent += " " + t("asrStatusEnv");
+  }
+
+  function applyAsrStatus(next) {
+    asr = next || {};
+    renderAsr();
+  }
+
+  function loadAsr() {
+    return DC.api("/api/admin/asr").then(function (res) {
+      if (!res.ok) {
+        showError($("asrMsg"), res.data);
+        return;
+      }
+      applyAsrStatus(res.data);
+    });
+  }
+
+  function onAsrSave(e) {
+    e.preventDefault();
+    var btn = $("asrSave");
+    var msg = $("asrMsg");
+    var key = $("asrKey");
+    DC.busy(btn, true);
+    msg.textContent = t("setupWorking");
+    DC.post("/api/asr/setup", { api_key: key ? key.value : "" }).then(function (res) {
+      if (key) key.value = "";
+      DC.busy(btn, false);
+      var code = (res.data && res.data.code) || "";
+      if (res.ok && res.data && res.data.ok) {
+        DC.setMsg(msg, code || "asr_setup_ok", "ok");
+        applyAsrStatus(res.data.status || asr);
+      } else {
+        showError(msg, res.data);
+      }
+    }).catch(function () {
+      if (key) key.value = "";
+      DC.busy(btn, false);
+      DC.setMsg(msg, "asrNetErr", "err");
+    });
+  }
+
+  function onAsrReset() {
+    var ask = t("asrResetAsk");
+    if (typeof window.confirm === "function" && !window.confirm(ask)) return;
+    var btn = $("asrReset");
+    var msg = $("asrMsg");
+    DC.busy(btn, true);
+    DC.post("/api/asr/setup/reset", {}).then(function (res) {
+      DC.busy(btn, false);
+      var code = (res.data && res.data.code) || "";
+      if (res.ok && res.data && res.data.ok) {
+        var key = $("asrKey");
+        if (key) key.value = "";
+        DC.setMsg(msg, code || "asr_reset", "ok");
+        applyAsrStatus(res.data.status || { configured: false, source: "" });
+      } else {
+        showError(msg, res.data);
+      }
+    }).catch(function () {
+      DC.busy(btn, false);
+      DC.setMsg(msg, "asrNetErr", "err");
+    });
+  }
+
   function showError(msg, data) {
     var code = data && data.code;
     if (code && t(code) !== code) DC.setMsg(msg, code, "err");
@@ -308,15 +389,20 @@
   if (difyForm) difyForm.addEventListener("submit", onDifySave);
   var difyReset = $("difyReset");
   if (difyReset) difyReset.addEventListener("click", onDifyReset);
+  var asrForm = $("asrForm");
+  if (asrForm) asrForm.addEventListener("submit", onAsrSave);
+  var asrReset = $("asrReset");
+  if (asrReset) asrReset.addEventListener("click", onAsrReset);
 
   DC.afterLang(function () {
     renderIdentity();
     render();
     renderDify();
+    renderAsr();
   });
 
   DC.start(function () {
     renderIdentity();
-    return Promise.all([load(), loadDify()]);
+    return Promise.all([load(), loadDify(), loadAsr()]);
   }, "admin");
 })(window.DC);

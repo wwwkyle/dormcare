@@ -35,6 +35,172 @@
 
   function $(id) { return document.getElementById(id); }
 
+  var Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var asrRecording = false, asrTimer = null, asrStream = null,
+      asrContext = null, asrProcessor = null, asrChunks = [], asrSampleRate = 16000;
+  var ASR_MAX_SECONDS = 60;
+  var ASR_MAX_BYTES = 8 * 1024 * 1024;
+
+  function setSpeechHint(key) {
+    var el = $("speechHint");
+    if (!el) return;
+    el.hidden = !key;
+    el.textContent = key ? t(key) : "";
+  }
+
+  function asrEnabled() { return !!(DC.cfg && DC.cfg.asr_enabled); }
+
+  function renderSpeechMode() {
+    var btn = $("speechBtn");
+    if (!btn) return;
+    if (asrRecording) {
+      btn.disabled = false;
+      btn.textContent = t("asrStop");
+      return;
+    }
+    btn.textContent = t(asrEnabled() ? "asrButton" : "speechStart");
+    if (!asrEnabled() && !Speech) {
+      btn.disabled = true;
+      setSpeechHint("speechUnsupported");
+    } else {
+      btn.disabled = false;
+    }
+  }
+
+  function writeAscii(view, offset, value) {
+    for (var i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+  }
+
+  // 16-bit mono PCM WAV: exactly what DeepSeek ASR accepts.
+  function buildWav(chunks, rate) {
+    var samples = 0, i, j;
+    for (i = 0; i < chunks.length; i++) samples += chunks[i].length;
+    var buffer = new ArrayBuffer(44 + samples * 2);
+    var view = new DataView(buffer);
+    writeAscii(view, 0, "RIFF");
+    view.setUint32(4, 36 + samples * 2, true);
+    writeAscii(view, 8, "WAVE");
+    writeAscii(view, 12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true);
+    view.setUint32(28, rate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeAscii(view, 36, "data");
+    view.setUint32(40, samples * 2, true);
+    var offset = 44;
+    for (i = 0; i < chunks.length; i++) {
+      var chunk = chunks[i];
+      for (j = 0; j < chunk.length; j++, offset += 2) {
+        var value = Math.max(-1, Math.min(1, chunk[j]));
+        view.setInt16(offset, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+      }
+    }
+    return buffer;
+  }
+
+  function toBase64(buffer) {
+    var bytes = new Uint8Array(buffer), binary = "", step = 0x8000;
+    for (var i = 0; i < bytes.length; i += step) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+    }
+    return window.btoa(binary);
+  }
+
+  function appendTranscript(text) {
+    var box = $("intakeText");
+    text = (text || "").trim();
+    if (!box || !text) return;
+    box.value = (box.value.trim() + " " + text).trim();
+    box.focus();
+  }
+
+  function stopAsrRecording() {
+    if (!asrRecording) return;
+    asrRecording = false;
+    if (asrTimer) { window.clearTimeout(asrTimer); asrTimer = null; }
+    var chunks = asrChunks.slice(), rate = asrSampleRate;
+    asrChunks = [];
+    try {
+      if (asrProcessor) asrProcessor.disconnect();
+      if (asrStream) asrStream.getTracks().forEach(function (track) { track.stop(); });
+      if (asrContext) asrContext.close();
+    } catch (ignore) {}
+    asrProcessor = null; asrStream = null; asrContext = null;
+    renderSpeechMode();
+
+    var samples = 0;
+    for (var i = 0; i < chunks.length; i++) samples += chunks[i].length;
+    if (samples < rate / 2) { setSpeechHint("asrNoAudio"); return; }
+    var limit = (DC.cfg && DC.cfg.asr_max_seconds) || ASR_MAX_SECONDS;
+    if (samples / rate > limit + 1) { setSpeechHint("asrTooLong"); return; }
+    var wav = buildWav(chunks, rate);
+    if (wav.byteLength > ASR_MAX_BYTES) { setSpeechHint("asrTooLong"); return; }
+    setSpeechHint("asrBusy");
+    DC.post("/api/asr/transcribe", { audio: toBase64(wav), mime: "audio/wav" })
+      .then(function (res) {
+        var code = (res.data && res.data.code) || "asrFailed";
+        if (!res.ok || !res.data || !res.data.ok || !res.data.text) {
+          setSpeechHint(t(code) !== code ? code : "asrFailed");
+          return;
+        }
+        appendTranscript(res.data.text);
+        setSpeechHint("");
+      }).catch(function () { setSpeechHint("asrFailed"); });
+  }
+
+  function startAsrRecording() {
+    var nav = window.navigator || {};
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!nav.mediaDevices || !nav.mediaDevices.getUserMedia || !Ctx
+        || (!Ctx.prototype.createScriptProcessor && !Ctx.prototype.createJavaScriptNode)) {
+      setSpeechHint("asrUnsupported");
+      return;
+    }
+    nav.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
+    }).then(function (stream) {
+      var ctx = new Ctx();
+      if (ctx.state === "suspended" && ctx.resume) ctx.resume();
+      var source = ctx.createMediaStreamSource(stream);
+      var processor = ctx.createScriptProcessor
+        ? ctx.createScriptProcessor(4096, 1, 1) : ctx.createJavaScriptNode(4096, 1, 1);
+      var silent = ctx.createGain();
+      silent.gain.value = 0;
+      asrChunks = [];
+      asrSampleRate = ctx.sampleRate || 16000;
+      processor.onaudioprocess = function (e) {
+        if (!asrRecording) return;
+        asrChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      };
+      source.connect(processor);
+      processor.connect(silent);
+      silent.connect(ctx.destination);
+      asrStream = stream; asrContext = ctx; asrProcessor = processor;
+      asrRecording = true;
+      setSpeechHint("asrRecording");
+      renderSpeechMode();
+      var limit = (DC.cfg && DC.cfg.asr_max_seconds) || ASR_MAX_SECONDS;
+      asrTimer = window.setTimeout(stopAsrRecording, limit * 1000);
+    }).catch(function () { setSpeechHint("asrDenied"); });
+  }
+
+  function fallbackSpeech() {
+    if (!Speech) { setSpeechHint("speechUnsupported"); return; }
+    var rec = new Speech();
+    rec.lang = DC.lang === "zh" ? "zh-CN" : "en-US";
+    setSpeechHint("speechListening");
+    rec.onresult = function (event) {
+      var text = event.results[0][0].transcript || "";
+      appendTranscript(text);
+      setSpeechHint("");
+    };
+    rec.onerror = function () { setSpeechHint("speechFailed"); };
+    try { rec.start(); } catch (e) { setSpeechHint("speechFailed"); }
+  }
+
   /* ====================================================================== */
   /*  chips                                                                 */
   /* ====================================================================== */
@@ -742,31 +908,12 @@
       refreshDraftImages();
     });
 
-    function setSpeechHint(key) {
-      var el = $("speechHint");
-      if (!el) return;
-      el.hidden = !key;
-      el.textContent = key ? t(key) : "";
-    }
-    var Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Speech) {
-      $("speechBtn").disabled = true;
-      setSpeechHint("speechUnsupported");
-    } else {
-      $("speechBtn").addEventListener("click", function () {
-        var rec = new Speech();
-        rec.lang = DC.lang === "zh" ? "zh-CN" : "en-US";
-        setSpeechHint("speechListening");
-        rec.onresult = function (event) {
-          var text = event.results[0][0].transcript || "";
-          $("intakeText").value = ($("intakeText").value.trim() + " " + text).trim();
-          $("intakeText").focus();
-          setSpeechHint("");
-        };
-        rec.onerror = function () { setSpeechHint("speechFailed"); };
-        try { rec.start(); } catch (e) { setSpeechHint("speechFailed"); }
-      });
-    }
+    $("speechBtn").addEventListener("click", function () {
+      if (asrRecording) { stopAsrRecording(); return; }
+      if (asrEnabled()) startAsrRecording();
+      else fallbackSpeech();
+    });
+    renderSpeechMode();
 
     $("agentConfirm").addEventListener("click", function () {
       var pairs = selectedPairs();
@@ -806,6 +953,7 @@
     renderSlots();
     renderAddress();
     renderPhotoRules();
+    renderSpeechMode();
     var contactHint = $("contactHint");
     if (contactHint && !contactHint.hidden) contactHint.textContent = t("contactMissingPhone");
     renderConversation();
@@ -835,6 +983,7 @@
       renderSlots();
       renderAddress(user);
       renderPhotoRules();
+      renderSpeechMode();
       initializeIdentityDefaults(user);
       return restoreAgentSession();
     });

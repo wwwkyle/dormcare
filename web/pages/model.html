@@ -106,6 +106,26 @@
     </section>
 
     <section class="card">
+      <div class="card-head">
+        <h2><span aria-hidden="true">🎙</span> <span data-i18n="asrSetupTitle">DeepSeek 语音识别</span></h2>
+      </div>
+      <p class="hint" data-i18n="asrSetupBody"></p>
+      <p class="locked-value" id="asrNow"></p>
+
+      <form id="asrForm" autocomplete="off">
+        <label class="lbl" for="asrKey" data-i18n="asrKeyLabel">DeepSeek API Key</label>
+        <input type="password" id="asrKey" maxlength="400" autocomplete="off" spellcheck="false"
+               data-i18n-ph="asrKeyPh">
+
+        <div class="row">
+          <button type="submit" class="btn primary" id="asrSave" data-i18n="asrSave">保存 ASR 配置</button>
+          <button type="button" class="btn danger" id="asrReset" data-i18n="asrReset">清除 ASR 配置</button>
+        </div>
+      </form>
+      <p class="form-msg" id="asrMsg"></p>
+    </section>
+
+    <section class="card">
         <div class="acc-block" id="adminAccountSecurity">
           <h2 data-i18n="adAccountSecurity">账号安全</h2>
           <p class="hint" data-i18n="accPwHint"></p>

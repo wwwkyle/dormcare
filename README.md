@@ -474,6 +474,10 @@ shift 08:30 at workshop
 | GET | `/api/workers` | 学生 / 师傅 / 管理员 | 师傅列表（姓名 / 工种 / 工号；分机号只给师傅与管理员看） |
 | GET | `/api/plan?date=&lang=` | 师傅 | 自己当天的路线（`worker` 参数会被忽略） |
 | POST | `/api/setup` | 登录 | 一次性登记模型密钥 |
+| GET | `/api/admin/asr` | 管理员 | 查看 DeepSeek ASR 配置状态，**不含密钥** |
+| POST | `/api/asr/setup` | 管理员 | 登记 / 更新 DeepSeek ASR Key；留空则沿用当前值 |
+| POST | `/api/asr/setup/reset` | 管理员 | 清除页面保存的 ASR Key；`.env` / 环境变量的值会重新生效 |
+| POST | `/api/asr/transcribe` | 学生 | 上传 base64 的 16 位 PCM WAV，服务端转写；**最长 60 秒 / 8MiB**，只返回文字 |
 | GET | `/api/admin/dify` | 管理员 | 查看 Dify 配置状态（是否配置、来源、API 地址），**不含密钥** |
 | POST | `/api/dify/setup` | 管理员 | 登记 / 更新 Dify 的 `api_key` 与 `base_url`；密钥不回传，留空则沿用当前密钥 |
 | POST | `/api/dify/setup/reset` | 管理员 | 清除页面登记的 Dify 配置；`.env` / 环境变量的值会重新生效 |
@@ -610,6 +614,7 @@ python tests/test_account.py       # 主菜单 + 自助账号
 python tests/test_multimodal.py    # 上传、完工凭证、AI 受理
 python tests/test_dify.py          # Dify 客户端、会话与回调接口
 python tests/test_dify_settings.py # 系统设置里的 Dify 配置：权限 / 校验 / 持久化
+python tests/test_asr.py            # DeepSeek ASR：校验、60 秒上限、权限与端到端转写
 python tests/smoke_test.py         # 接口 + 规则不变量 + 页面放行
 node tests/dom_smoke.js            # 前端 DOM 行为（需本地服务运行）
 python tests/edge_cases.py         # 双语 AI、降级与边界情况
@@ -778,9 +783,15 @@ Agent 首次识别后严格只返回两个主选项：**A 提供维修建议 / B
 
 图片最多 5 张、每张解码后不超过 5MB、仅 JPEG/PNG。服务端校验上传归属，并在支持视觉的
 OpenAI-compatible 模型路径中以私有 data URL 构造多模态消息；图片文件没有公开静态映射，
-模型不支持视觉或调用失败时会自动回到确定性规则，不阻塞报修。浏览器不支持语音、用户拒权、
-模型不可用时，下方同一受理区域内的编辑表单仍可直接手工提交。Web Speech API 是否免费及
-是否把音频发送到浏览器厂商服务由浏览器实现决定，本项目不收取费用，也不保证所有浏览器可用。
+模型不支持视觉或调用失败时会自动回到确定性规则，不阻塞报修。
+
+**语音转文字走服务端 DeepSeek ASR**：管理员在「系统设置 → DeepSeek 语音识别」填入
+DeepSeek API Key 后，学生页用麦克风录 16 位 PCM WAV，**每次最长 60 秒**，浏览器把音频
+提交到 `/api/asr/transcribe`，服务端调用 DeepSeek `/v1/tools/asr`，只把转写文字回填到输入框，
+学生可先修改再发送。未配置 Key 时退回浏览器自带的 Web Speech API（若可用）；浏览器不支持、
+用户拒权、识别失败或模型不可用时，同一受理区域内的编辑表单仍可直接手工提交。
+配置 Key 后音频交由 DeepSeek 处理，不再由浏览器厂商的语音服务处理；密钥不会回传页面。
+旧部署也可在 `.env` 里用 `DEEPSEEK_API_KEY` 作为回退，页面保存的值优先。
 
 师傅将工单从 `accepted` 标记为 `done` 时必须提交至少一张完工图。学生记录页可查看
 报修图、完工图、完成时间、完工师傅，并确认或评价。持久化状态仍使用兼容值

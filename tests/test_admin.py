@@ -117,6 +117,10 @@ def main():
             ("/api/setup/reset", {}, "POST"),
             ("/api/dify/setup", {"api_key": "app-x"}, "POST"),
             ("/api/dify/setup/reset", {}, "POST"),
+            ("/api/admin/asr", None, "GET"),
+            ("/api/asr/setup", {"api_key": "sk-x"}, "POST"),
+            ("/api/asr/setup/reset", {}, "POST"),
+            ("/api/asr/transcribe", {"audio": "x"}, "POST"),
         ]:
             s, d = anon.call(path, body, method)
             check("anonymous %-28s -> 401" % path, s == 401, "%d %s" % (s, d.get("code")))
@@ -152,6 +156,11 @@ def main():
             ("student cannot read Dify settings", stu, "/api/admin/dify", None, "GET"),
             ("student cannot set the Dify key", stu, "/api/dify/setup",
              {"api_key": "app-x"}, "POST"),
+            ("student cannot read ASR settings", stu, "/api/admin/asr", None, "GET"),
+            ("student cannot set the ASR key", stu, "/api/asr/setup",
+             {"api_key": "sk-x"}, "POST"),
+            ("admin cannot transcribe audio", admin, "/api/asr/transcribe",
+             {"audio": "x"}, "POST"),
             ("technician cannot reset the model key", tech, "/api/setup/reset", {}, "POST"),
             ("technician cannot reset Dify settings", tech, "/api/dify/setup/reset", {}, "POST"),
         ]:

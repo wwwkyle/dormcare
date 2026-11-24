@@ -465,6 +465,12 @@ async function runRole(page, module, cookie, opts) {
     check(page + " shows the Dify connection status without the key",
       difyText.length > 0 && !/^dify/.test(difyText) && !/app-/.test(difyText),
       difyText);
+    check(page + " offers the DeepSeek ASR key field",
+      /type="password"[^>]*id="asrKey"/.test(html) && /id="asrForm"/.test(html), "");
+    const asrText = txt("asrNow");
+    check(page + " shows the ASR status without the key",
+      asrText.length > 0 && !/^asr/.test(asrText) && !/sk-/.test(asrText),
+      asrText);
   }
 
   // Every console carries a way back to the one menu. The control is rendered

@@ -7,12 +7,13 @@ import time
 
 import dify_client
 from agent_prompts import advice_prompt, intake_prompt
-from agent_tools import (build_draft, confidence_for, next_question_for,
-                         validate_draft)
+from agent_tools import (build_draft, confidence_for, make_title,
+                         next_question_for, validate_draft)
 from ai_agents import SELF_HELP, call_model
 from config import REPAIR_BY_ID, REPAIR_TYPES
 from knowledge_base import advice_for_student
 from scheduler import PRIORITY_LEVELS
+import title_agent
 
 
 SAFE_SELF_HELP_TYPES = {
@@ -403,7 +404,11 @@ def _dify_result(response, session, local_draft, warning, lang, user):
     if isinstance(remote_draft, dict):
         for name in ("title", "description"):
             if isinstance(remote_draft.get(name), str) and remote_draft[name].strip():
-                draft[name] = remote_draft[name][:1000 if name == "description" else 60]
+                # A workflow-supplied title gets the same whole-sentence
+                # treatment as a locally generated one; descriptions keep
+                # their own larger budget.
+                draft[name] = (make_title(remote_draft[name])
+                               if name == "title" else remote_draft[name][:1000])
         if (isinstance(remote_draft.get("repair_type"), str)
                 and remote_draft["repair_type"] in REPAIR_BY_ID):
             draft["repair_type"] = remote_draft["repair_type"]
@@ -492,6 +497,30 @@ def _dify_result(response, session, local_draft, warning, lang, user):
 
 def respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
             force_draft=False, advice_mode=False):
+    """Run the intake flow, then give auto-written titles a model summary.
+
+    The wrapper is deliberately outside the flow: titles the student edited by
+    hand are merged back by the HTTP layer after this returns, so they always
+    win over a generated summary.
+    """
+    result = _respond(api_key, model, session, user, lang, store, upload_dir,
+                      force_draft, advice_mode)
+    draft = result.get("draft") if isinstance(result, dict) else None
+    if api_key and isinstance(draft, dict) and draft.get("description") and draft.get("title"):
+        # Only a title still equal to the deterministic one came straight from
+        # the description. A workflow or model that chose its own title keeps it.
+        local_draft, _, _ = build_draft(
+            session.get("history") or [], session.get("image_ids") or [], user, lang)
+        if draft["title"] == local_draft.get("title"):
+            summary = title_agent.summarize_title(
+                api_key, model, draft["description"], lang)
+            if summary:
+                draft["title"] = summary
+    return result
+
+
+def _respond(api_key, model, session, user, lang="zh", store=None, upload_dir="",
+             force_draft=False, advice_mode=False):
     history = session.get("history") or []
     image_ids = session.get("image_ids") or []
     local_draft, enough, warning = build_draft(history, image_ids, user, lang)

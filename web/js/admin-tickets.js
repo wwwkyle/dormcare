@@ -18,6 +18,22 @@
   var users = [];
   var workers = [];
   var statusFilter = "";
+  var priorityFilter = "";
+  var collegeFilter = "";
+
+  // The overview's distribution blocks deep-link here with query params, so
+  // the initial filters come from the URL. Reading them defensively keeps the
+  // DOM test harness (which has no real location) working unchanged.
+  function readUrlFilters() {
+    var out = {};
+    try {
+      var search = (window.location && window.location.search) || "";
+      new URLSearchParams(search).forEach(function (value, key) {
+        if (key === "status" || key === "priority" || key === "college") out[key] = value;
+      });
+    } catch (ignore) {}
+    return out;
+  }
 
   function $(id) { return document.getElementById(id); }
 
@@ -196,6 +212,29 @@
     statusFilter = sel.value || "";
   }
 
+  function miniOptions(sel, entries, current) {
+    if (!sel) return;
+    sel.innerHTML = '<option value="">' + esc(t("adFilterAll")) + "</option>" +
+      entries.map(function (e) {
+        return '<option value="' + esc(e.value) + '">' + esc(e.label) + "</option>";
+      }).join("");
+    sel.value = current || "";
+  }
+
+  function renderPriorityFilter() {
+    miniOptions($("adPriorityFilter"), PRIORITY_ORDER.map(function (k) {
+      return { value: k, label: priLabel(k) };
+    }), priorityFilter);
+    priorityFilter = ($("adPriorityFilter") || {}).value || "";
+  }
+
+  function renderCollegeFilter() {
+    miniOptions($("adCollegeFilter"), (DC.cfg && DC.cfg.colleges || []).map(function (c) {
+      return { value: c.id, label: DC.collegeLabel(c.id) || c.zh || c.id };
+    }), collegeFilter);
+    collegeFilter = ($("adCollegeFilter") || {}).value || "";
+  }
+
   var PRIORITY_ORDER = ["urgent", "high", "normal", "low"];
 
   // Only the server's scheduled appointment is a visit, never the availability slots.
@@ -306,7 +345,9 @@
     var node = $("adTicketList");
     if (!node) return;
     var list = tickets.filter(function (tk) {
-      return !statusFilter || tk.status === statusFilter;
+      return (!statusFilter || tk.status === statusFilter) &&
+        (!priorityFilter || tk.priority === priorityFilter) &&
+        (!collegeFilter || tk.college === collegeFilter);
     }).sort(compareTickets);
     var count = $("adTicketCount");
     if (count) {
@@ -443,6 +484,20 @@
         renderTickets();
       });
     }
+    var priority = $("adPriorityFilter");
+    if (priority) {
+      priority.addEventListener("change", function (e) {
+        priorityFilter = e.target.value || "";
+        renderTickets();
+      });
+    }
+    var college = $("adCollegeFilter");
+    if (college) {
+      college.addEventListener("change", function (e) {
+        collegeFilter = e.target.value || "";
+        renderTickets();
+      });
+    }
     var list = $("adTicketList");
     if (list) list.addEventListener("click", onTicketListClick);
     $("adNewTicket").addEventListener("click", function () { openEditor(null); });
@@ -456,6 +511,8 @@
   DC.afterLang(function () {
     renderIdentity();
     renderStatusFilter();
+    renderPriorityFilter();
+    renderCollegeFilter();
     renderTickets();
     renderEditorOptions();
     if (DC.me) loadTickets();
@@ -465,10 +522,16 @@
 
   DC.start(function () {
     return DC.loadConfig().then(function () {
+      var fromUrl = readUrlFilters();
+      statusFilter = statusFilter || fromUrl.status || "";
+      priorityFilter = priorityFilter || fromUrl.priority || "";
+      collegeFilter = collegeFilter || fromUrl.college || "";
       renderIdentity();
       return loadOverviewLabels();
     }).then(function () {
       renderStatusFilter();
+      renderPriorityFilter();
+      renderCollegeFilter();
       return loadReferences();
     }).then(function () {
       return loadTickets();

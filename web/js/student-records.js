@@ -280,6 +280,31 @@
         return;
       }
 
+      // Sign-off on a finished job, or send it back when it is not fixed.
+      // Both are plain status moves the server already gates by ownership.
+      if (act === "confirm" || act === "reopen") {
+        DC.busy(b, true);
+        DC.post("/api/tickets/status", {
+          id: id, status: act === "confirm" ? "confirmed" : "pending", lang: DC.lang
+        }).then(function (res) {
+          DC.busy(b, false);
+          var msg = $("formMsg");
+          msg.dataset.code = "";
+          if (!res.ok) {
+            msg.dataset.state = "err";
+            msg.textContent = DC.errorText(res.data);
+          } else {
+            msg.dataset.state = "ok";
+            msg.textContent = t(act === "confirm" ? "tkConfirmed" : "tkReopened");
+          }
+          loadMine();
+        }).catch(function () {
+          DC.busy(b, false);
+          DC.setMsg($("formMsg"), "err_network", "err");
+        });
+        return;
+      }
+
       // The technician offered another day — the student answers.
       if (act === "resched-accept" || act === "resched-decline") {
         var accept = act === "resched-accept";

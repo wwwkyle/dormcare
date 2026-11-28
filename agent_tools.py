@@ -2,12 +2,87 @@
 from datetime import date
 
 from ai_agents import fallback_classify
-from config import REPAIR_BY_ID
+from config import MAX_TITLE, REPAIR_BY_ID
 
 HIGH_RISK = ("漏电", "触电", "火花", "燃气", "煤气", "冒烟", "起火", "大面积漏水",
              "困住", "被困", "锁在", "无法逃生",
              "electrical leak", "electric shock", "gas leak", "smoke", "fire",
              "sparking", "major flood", "flooding", "trapped", "locked in")
+
+# Sentence / clause punctuation in both languages. A title should end on a
+# whole thought; slicing a description at a fixed index cut words in half.
+_SENTENCE_END = "。！？；.!?;\n"
+_CLAUSE_END = "，,、：:"
+_ELLIPSIS = "…"
+# Keep collecting sentences until the title actually says something about the
+# fault. A bare greeting is dropped, but a short fault ("门锁坏了。") is kept.
+_MIN_TITLE_CHARS = 12
+_GREETINGS = ("你好", "您好", "hi", "hello", "hey", "请问", "麻烦你", "老师你好")
+
+
+def _clip(text, limit):
+    """Elide at the last clause boundary within budget, never mid-thought."""
+    if len(text) <= limit:
+        return text
+    head = text[:max(1, limit - 1)]
+    cut = -1
+    for index, char in enumerate(head):
+        if char in _CLAUSE_END + _SENTENCE_END + " \t":
+            cut = index + 1
+    if cut > 0:
+        head = head[:cut]
+    return head.rstrip(" \t" + _SENTENCE_END + _CLAUSE_END) + _ELLIPSIS
+
+
+def _sentences(text):
+    """Split into sentences, keeping the closing punctuation on each one."""
+    parts, buffer = [], []
+    for char in text:
+        buffer.append(char)
+        if char in _SENTENCE_END and "".join(buffer).strip():
+            parts.append("".join(buffer).strip())
+            buffer = []
+    tail = "".join(buffer).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def make_title(text, limit=MAX_TITLE):
+    """Turn raw student input into a complete, readable ticket title.
+
+    The old draft generator used ``text.splitlines()[0][:60]``, which handed
+    the student a half sentence that merely echoed their description. Build a
+    title from whole sentences instead: drop a leading greeting, stop once the
+    fault is described, and elide at a clause boundary only for a genuinely
+    long sentence. Short titles the student types themselves pass unchanged.
+    """
+    value = " ".join(str(text or "").split())
+    if not value:
+        return ""
+    if len(value) <= limit:
+        return value
+
+    sentences = _sentences(value)
+    while len(sentences) > 1:
+        opener = sentences[0].rstrip("".join(_SENTENCE_END) + " \t").strip().lower()
+        if not opener or any(opener == g or opener.startswith(g + " ")
+                             for g in _GREETINGS):
+            sentences.pop(0)
+        else:
+            break
+
+    chosen, used = [], 0
+    for index, sentence in enumerate(sentences):
+        room = limit - used
+        if used and len(sentence) > room:
+            break
+        chosen.append(_clip(sentence, room) if len(sentence) > room else sentence)
+        used += len(chosen[-1])
+        if used >= _MIN_TITLE_CHARS or index == len(sentences) - 1:
+            break
+    title = "".join(chosen).strip()
+    return _clip(title, limit) if title else _clip(value, limit)
 
 
 def build_draft(history, image_ids, user, lang="zh"):
@@ -29,7 +104,7 @@ def build_draft(history, image_ids, user, lang="zh"):
         user.get("block", ""), user.get("dorm", "")) if x)
     enough = risky or len(text) >= (12 if lang == "zh" else 30)
     draft = {
-        "title": text.splitlines()[0][:60] if text else "",
+        "title": make_title(text),
         "repair_type": classified["repair_type"],
         "description": text[:1000],
         "location": location,

@@ -18,7 +18,10 @@ const DC = { t: key => key, esc, fill: (text, data) => text.replace(/\{(\w+)\}/g
 let source = fs.readFileSync(path.join(__dirname, "../web/js/admin-tickets.js"), "utf8");
 source = source.replace("  wire();", `  DC.test = { compareTickets: compareTickets, appointmentTime: appointmentTime,
   appointmentText: appointmentText, reportedText: reportedText, ticketRow: ticketRow,
-  renderList: function (data, filter) { tickets = data; statusFilter = filter; renderTickets(); } };
+  renderList: function (data, filter, priority, college) {
+    tickets = data; statusFilter = filter; priorityFilter = priority || "";
+    collegeFilter = college || ""; renderTickets();
+  } };
   wire();`);
 vm.runInNewContext(source, { window: { DC }, document: { getElementById: element } });
 const api = DC.test;
@@ -77,4 +80,38 @@ check("filtering retains the same order and never mutates API data", () => {
   assert(html.indexOf('data-ticket-id="earlier"') < html.indexOf('data-ticket-id="later"'));
   assert.equal(JSON.stringify(input), before);
 });
+check("priority and college filters compose with the status filter", () => {
+  api.renderList(input, "", "urgent", "");
+  let html = element("adTicketList").innerHTML;
+  assert(html.includes('data-ticket-id="earlier"'));
+  assert(!html.includes('data-ticket-id="high"'));
+  api.renderList(input, "", "", "college-x");
+  html = element("adTicketList").innerHTML;
+  assert.equal(html.includes("data-ticket-id"), false);
+});
+
+/* The overview's distribution numbers deep-link into the ticket board. */
+check("overview distribution blocks link to the filtered ticket board", async () => {
+  const elements2 = new Map();
+  const el = id => {
+    if (!elements2.has(id)) elements2.set(id, { value: "", innerHTML: "", textContent: "", dataset: {}, addEventListener() {} });
+    return elements2.get(id);
+  };
+  const DC2 = { t: key => key, esc, fill: (s) => s, priLabel: k => k,
+    collegeLabel: id => "College " + id,
+    loadConfig: () => Promise.resolve(),
+    api: () => Promise.resolve({ ok: true, data: {
+      by_status: { done: 2 }, by_priority: { high: 1 },
+      by_college: [{ college: "shaw", count: 3 }] } }),
+    afterLang() {}, start(fn) { fn(); }, lang: "en" };
+  const src = fs.readFileSync(path.join(__dirname, "../web/js/admin-overview.js"), "utf8");
+  vm.runInNewContext(src, { window: { DC: DC2 }, document: { getElementById: el } });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const html = el("adBreakdown").innerHTML;
+  assert(html.includes('href="/tickets.html?status=done"'));
+  assert(html.includes('href="/tickets.html?priority=high"'));
+  assert(html.includes('href="/tickets.html?college=shaw"'));
+  assert(html.includes('class="ad-chip"'));
+});
+
 console.log(checks + " admin presentation checks passed");

@@ -345,7 +345,7 @@ login.js           登录 / 学生注册（两个并列面板；跳转目标由�
 menu.js            主菜单 · 按角色渲染入口卡片（唯一知道三个角色各有哪些页面的模块）
 
 student-report.js  我要报修：AI 受理 · 损坏类型 · 空闲时段网格 · 提交
-student-records.js 我的报修记录：状态 · 上门时间 · 改约回应 · 评分反馈
+student-records.js 我的报修记录：状态 · 上门时间 · 改约回应 · 评分反馈 · 确认完成 / 还没修好
 account.js         账号设置：更正宿舍（仅学生看得见该区块）+ 修改密码（三角色通用）
 worker-plan.js     排班与派活：当日路线 · 统计卡 · 时间轴 · 未排入工单处理 · AI 派活
 worker-jobs.js     我的工单：接单 / 完工 · 学生评分回显
@@ -615,8 +615,10 @@ python tests/test_multimodal.py    # 上传、完工凭证、AI 受理
 python tests/test_dify.py          # Dify 客户端、会话与回调接口
 python tests/test_dify_settings.py # 系统设置里的 Dify 配置：权限 / 校验 / 持久化
 python tests/test_asr.py            # DeepSeek ASR：校验、60 秒上限、权限与端到端转写
+python tests/test_title.py          # 工单标题：模型总结、确定性兜底与前后端上限一致
 python tests/smoke_test.py         # 接口 + 规则不变量 + 页面放行
 node tests/dom_smoke.js            # 前端 DOM 行为（需本地服务运行）
+node tests/test_student_records.js # 我的报修记录：确认完成 / 还没修好走状态接口
 python tests/edge_cases.py         # 双语 AI、降级与边界情况
 python tests/test_twopass.py       # 两遍排班与不变量复核
 python scripts/rule_trace.py       # 逐分钟排班轨迹 + 模型路径验证
@@ -784,6 +786,14 @@ Agent 首次识别后严格只返回两个主选项：**A 提供维修建议 / B
 图片最多 5 张、每张解码后不超过 5MB、仅 JPEG/PNG。服务端校验上传归属，并在支持视觉的
 OpenAI-compatible 模型路径中以私有 data URL 构造多模态消息；图片文件没有公开静态映射，
 模型不支持视觉或调用失败时会自动回到确定性规则，不阻塞报修。
+
+工单标题不再是把学生描述硬切成前 60 字的半句话。**配置了模型密钥时，标题由大模型总结**：
+学生填完描述后，服务端用单独的轻量请求生成 4–16 字中文（或 3–9 个英文单词）的概括性标题，
+例如「门把手松动」/ `Loose door handle`；模型不可用、语言不符或返回整段描述时自动丢弃。
+没有模型密钥时回退到确定性标题：优先取完整的第一句、去掉「你好」这类开场白，
+超长才在标点边界省略并加省略号。学生手工改过的标题始终优先，不会被自动总结覆盖。
+标题上限统一为 120 字（前端输入框、草稿生成和所有写入路径共用 `config.MAX_TITLE`，
+并通过 `/api/config` 的 `title_max` 下发给浏览器）。
 
 **语音转文字走服务端 DeepSeek ASR**：管理员在「系统设置 → DeepSeek 语音识别」填入
 DeepSeek API Key 后，学生页用麦克风录 16 位 PCM WAV，**每次最长 60 秒**，浏览器把音频

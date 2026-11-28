@@ -45,6 +45,8 @@
         <div class="head-actions">
           <span class="count" id="adTicketCount"></span>
           <select id="adStatusFilter" class="mini-select" data-i18n-aria="adStatusFilter"></select>
+          <select id="adPriorityFilter" class="mini-select" data-i18n-aria="adPriorityFilter"></select>
+          <select id="adCollegeFilter" class="mini-select" data-i18n-aria="adCollegeFilter"></select>
           <button type="button" class="btn tiny primary" id="adNewTicket" data-i18n="adNewTicket">新建工单</button>
           <button type="button" class="btn tiny" id="adReload" data-i18n="adReload">刷新</button>
         </div>
@@ -64,7 +66,7 @@
           <select id="adOwnerUser" required></select>
         </label>
         <label><span data-i18n="lblTitle">标题</span>
-          <input type="text" id="adTitle" maxlength="80" required>
+          <input type="text" id="adTitle" maxlength="120" required>
         </label>
         <label><span data-i18n="lblType">报修类别</span>
           <select id="adRepairType" required></select>

@@ -836,6 +836,9 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   background: #f6f9fd; border: 1px solid var(--line); border-radius: 999px;
   padding: 3px 10px;
 }
+/* Distribution chips that deep-link into the ticket board read as links. */
+a.ad-chip { text-decoration: none; cursor: pointer; transition: border-color .15s; }
+a.ad-chip:hover { border-color: var(--brand); background: #eef4fc; }
 .ad-chip em { font-style: normal; font-size: 12px; color: var(--ink-2); }
 .ad-chip b { font-family: var(--mono); font-size: 12.5px; color: var(--brand); }
 

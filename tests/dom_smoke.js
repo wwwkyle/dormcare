@@ -817,9 +817,17 @@ async function runRole(page, module, cookie, opts) {
     check("admin overview renders its stat cards", statCards.length === 7,
       "cards=" + statCards.length);
 
-    const chips = id("adBreakdown").querySelectorAll("span.ad-chip");
+    // Distribution blocks deep-link into the ticket board, so the chips are
+    // anchors, not plain spans.
+    const chips = id("adBreakdown").querySelectorAll(".ad-chip");
+    const html = id("adBreakdown").innerHTML;
     check("admin breakdown renders status / priority / college counts",
       chips.length > 0, "chips=" + chips.length);
+    check("...and every distribution block links to the filtered board",
+      /href="\/tickets\.html\?status=/.test(html) &&
+      /href="\/tickets\.html\?priority=/.test(html) &&
+      /href="\/tickets\.html\?college=/.test(html),
+      html.slice(0, 120));
     check("the overview page carries no ticket board",
       document.getElementById("adTicketList") === null);
     check("no scheduling-rules card on the admin page",

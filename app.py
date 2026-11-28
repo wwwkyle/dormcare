@@ -92,9 +92,10 @@ from auth import (ANY_ROLE, HOME_BY_ROLE, MAX_DORM, MAX_NAME, MAX_PHONE,
                   clean_username, hash_password, new_session, password_error,
                   public_user, normalize_student_phone, session_expired, username_error,
                   verify_password)
-from config import (COLLEGES, COLLEGE_BY_ID, REPAIR_BY_ID, REPAIR_TYPES,
-                    TRAVEL_RULES, college_blocks_text, college_label,
-                    college_real_blocks, normalize_block, repair_label)
+from config import (COLLEGES, COLLEGE_BY_ID, MAX_TITLE, REPAIR_BY_ID,
+                    REPAIR_TYPES, TRAVEL_RULES, college_blocks_text,
+                    college_label, college_real_blocks, normalize_block,
+                    repair_label)
 from scheduler import (PRIORITY_LEVELS, SLOT_MINUTES, assign_day, job_to_json,
                        next_workdays, repair_minutes, schedule_day,
                        schedule_index, slot_label)
@@ -1266,6 +1267,7 @@ class Handler(BaseHTTPRequestHandler):
                 "agent_image_limit": dify_client.MAX_IMAGES if dify_client.enabled() else MAX_IMAGES,
                 "asr_enabled": asr_config.enabled(),
                 "asr_max_seconds": asr_client.MAX_AUDIO_SECONDS,
+                "title_max": MAX_TITLE,
                 "days": [d.isoformat() for d in
                          next_workdays(date.today(), TRAVEL_RULES["scheduling_days"])],
             })
@@ -2557,7 +2559,7 @@ class Handler(BaseHTTPRequestHandler):
             "lang": lang,
             "ai_reason": (body.get("ai_reason") or "").strip()[:300],
             "ai_source": (body.get("ai_source") or "").strip()[:20],
-            "title": (body.get("title") or "").strip()[:80],
+            "title": (body.get("title") or "").strip()[:MAX_TITLE],
             "image_ids": clean_images,
             "completion_image_ids": [],
             "agent_session_id": agent_session_id or "",
@@ -3104,7 +3106,7 @@ class Handler(BaseHTTPRequestHandler):
         current = base or {}
         patch = {}
         if creating or "title" in body:
-            title = (body.get("title") or "").strip()[:80]
+            title = (body.get("title") or "").strip()[:MAX_TITLE]
             if not title:
                 return None, ("bad_fields", "A title is required.")
             patch["title"] = title

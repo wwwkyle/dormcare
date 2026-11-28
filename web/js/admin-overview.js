@@ -60,13 +60,23 @@
   var STATUS_ORDER = ["pending", "accepted", "done", "confirmed"];
   var PRIORITY_ORDER = ["urgent", "high", "normal", "low"];
 
+  // Every distribution block links into the ticket board pre-filtered, so a
+  // number on this page is always one click away from the work behind it.
+  var FILTER_QUERY = { status: "status=", priority: "priority=", college: "college=" };
+
   function breakdownGroup(title, counts, labels, order, kind) {
     var keys = kind ? order.slice() : order.filter(function (k) { return counts[k] !== undefined; });
     Object.keys(counts).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
     var body = keys.length
       ? keys.map(function (k) {
-          return '<span class="ad-chip"><em>' + esc(kind === "status" ? t("adStatus_" + k) : kind === "priority" ? DC.priLabel(k) : (labels[k] || k)) + "</em><b>" +
-            esc(counts[k] || 0) + "</b></span>";
+          var label = esc(kind === "status" ? t("adStatus_" + k) : kind === "priority" ? DC.priLabel(k) : (labels[k] || k));
+          var query = FILTER_QUERY[kind];
+          var open = query && k !== "?"
+            ? '<a class="ad-chip" href="/tickets.html?' + query + encodeURIComponent(k) + '" title="' +
+              esc(t("adFilterAll")) + '">'
+            : '<span class="ad-chip">';
+          return open + "<em>" + label + "</em><b>" + esc(counts[k] || 0) + "</b>" +
+            (query && k !== "?" ? "</a>" : "</span>");
         }).join("")
       : '<span class="muted">' + esc(t("adNoData")) + "</span>";
     return '<div class="ad-group' + (kind ? " ad-distribution-" + kind : "") + '"><h4>' + esc(title) + '</h4><div class="ad-chips">' +
@@ -86,7 +96,7 @@
     box.innerHTML =
       breakdownGroup(t("adByStatus"), o.by_status || {}, o.status_labels || {}, STATUS_ORDER, "status") +
       breakdownGroup(t("adByPriority"), o.by_priority || {}, o.priority_labels || {}, PRIORITY_ORDER, "priority") +
-      breakdownGroup(t("adByCollege"), colCounts, colLabels, []);
+      breakdownGroup(t("adByCollege"), colCounts, colLabels, [], "college");
   }
 
   function q(path) { return path + "?lang=" + encodeURIComponent(DC.lang); }

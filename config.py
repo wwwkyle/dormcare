@@ -17,6 +17,10 @@ Nothing here is a guess made by a model. The model may only *explain* and
 schedule reproducible: same input, same plan, every time.
 """
 
+# A ticket title is a short summary, not a clipped prefix of the description.
+# The browser field, the draft generator and every write path share this cap.
+MAX_TITLE = 120
+
 # --------------------------------------------------------------------------- #
 # 书院 / Colleges  —— 共 8 个书院 / eight colleges
 #
